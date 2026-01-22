@@ -1,0 +1,5 @@
+flask
+python-dotenv
+openai-whisper
+openai>=1.0.0
+flask-limiter
