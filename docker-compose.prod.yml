@@ -1,8 +1,6 @@
 services:
   web:
     build: .
-    ports:
-      - "8000:8000"
     environment:
       - FLASK_ENV=production
     env_file:
@@ -20,6 +18,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - internal_net
 
   db:
     image: postgres:16-alpine
@@ -35,6 +35,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal_net
 
   redis:
     image: redis:7-alpine
@@ -42,6 +44,8 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
+    networks:
+      - internal_net
 
   worker:
     build: .
@@ -56,7 +60,33 @@ services:
       redis:
         condition: service_started
     restart: unless-stopped
+    networks:
+      - internal_net
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/certs:/etc/nginx/certs:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  internal_net:
+    driver: bridge
