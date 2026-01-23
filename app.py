@@ -1,19 +1,97 @@
 import os
+import click
 
 from flask import Flask
 
 from config import Config
-from logger import log
-from limiter import limiter
+from extensions import init_extensions, login_manager, Session
 from routes import register_blueprints
+from models import User
 
 
-app = Flask(__name__)
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
 
-limiter.init_app(app)
-register_blueprints(app)
+    # Cabeceras de seguridad
+    # TODO: Implementar en rev proxy mejor??
+    @app.after_request
+    def set_security_headers(response):
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
 
-if __name__ == "__main__":
+    init_extensions(app)
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        db = Session()
+        try:
+            user = db.query(User).filter_by(id=user_id, is_active=True).first()
+            return user
+        finally:
+            Session.remove()
+
+    register_blueprints(app)
+
+    # Comandos CLI
+    register_cli(app)
+
     os.makedirs(Config.DATA_DIR, exist_ok=True)
     os.makedirs(os.path.join(Config.DATA_DIR, "jobs"), exist_ok=True)
+
+    return app
+
+
+def register_cli(app):
+    @app.cli.command("create-admin")
+    @click.option("--username", prompt=True, help="Admin username")
+    @click.option(
+        "--password",
+        prompt=True,
+        hide_input=True,
+        confirmation_prompt=True,
+        help="Admin password"
+    )
+    def create_admin(username, password):
+        db = Session()
+
+        try:
+            existing = db.query(User).filter_by(username=username).first()
+            if existing:
+                click.echo(f"Error: User '{username}' already exists.")
+                return
+
+            user = User(
+                username=username,
+                is_admin=True,
+                is_active=True,
+                must_change_password=False,
+                can_stylize_images=True,
+                daily_script_quota=100
+            )
+            user.set_password(password)
+
+            db.add(user)
+            db.commit()
+
+            click.echo(f"Admin user '{username}' created successfully.")
+        finally:
+            Session.remove()
+
+    @app.cli.command("db-init")
+    def db_init():
+        # Por si acaso. siempre es mejor hacer las migraciones con alembic
+        from models import Base
+        from extensions import engine
+        Base.metadata.create_all(engine)
+        click.echo("Database tables created.")
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)

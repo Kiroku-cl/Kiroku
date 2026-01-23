@@ -9,14 +9,18 @@
     <link rel="stylesheet" href="/static/projects.css">
 </head>
 <body>
+    {% set active_page = 'projects' %}
+    {% include 'partials/navbar.html' %}
+
     <div class="projects-container">
         <div class="projects-header">
-            <h1>Proyectos</h1>
-            <a href="/" class="btn-new">
-                <i class="bi bi-plus-lg"></i>
-                Nueva Grabación
-            </a>
+            <h1>Mis Proyectos</h1>
         </div>
+
+        <!-- FAB para mobile -->
+        <a href="{{ url_for('pages.record_page') }}" class="fab-new" title="Nueva grabación">
+            <i class="bi bi-plus-lg"></i>
+        </a>
 
         <div id="projects-list" class="projects-list">
             <div class="loading">
@@ -71,20 +75,49 @@
             });
         }
 
+        function formatExpires(isoString) {
+            if (!isoString) return 'Sin expiración';
+            const now = new Date();
+            const expires = new Date(isoString);
+            if (Number.isNaN(expires.getTime())) return 'Sin expiración';
+
+            const diffMs = expires - now;
+            if (diffMs <= 0) return 'Expirado';
+
+            const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+            if (diffHours < 24) {
+                return `Expira en ${diffHours} hora${diffHours === 1 ? '' : 's'}`;
+            }
+
+            const diffDays = Math.ceil(diffHours / 24);
+            return `Expira en ${diffDays} día${diffDays === 1 ? '' : 's'}`;
+        }
+
         function getStatusClass(project) {
-            if (project.is_active) return 'recording';
-            if (project.job_status === 'processing') return 'processing';
-            if (project.job_status === 'done') return 'done';
-            if (project.job_status === 'error') return 'error';
+            const status = project.status || (project.is_active ? 'recording' : project.job_status);
+            if (status === 'recording') return 'recording';
+            if (status === 'queued') return 'processing';
+            if (status === 'processing') return 'processing';
+            if (status === 'done') return 'done';
+            if (status === 'error') return 'error';
             return 'done';
         }
 
         function getStatusText(project) {
-            if (project.is_active) return 'Grabando';
-            if (project.job_status === 'processing') return 'En proceso';
-            if (project.job_status === 'done') return 'Finalizado';
-            if (project.job_status === 'error') return 'Error';
+            const status = project.status || (project.is_active ? 'recording' : project.job_status);
+            if (status === 'recording') return 'Grabando';
+            if (status === 'queued') return 'En cola';
+            if (status === 'processing') return 'En proceso';
+            if (status === 'done') return 'Finalizado';
+            if (status === 'error') return 'Error';
             return 'Finalizado';
+        }
+
+        function getRetentionTag(project) {
+            if (!project.expires_at) return null;
+            const label = formatExpires(project.expires_at);
+            if (!label || label === 'Sin expiración') return null;
+            return label;
         }
 
         let pollingInterval = null;
@@ -94,7 +127,9 @@
                 clearInterval(pollingInterval);
             }
 
-            const processingCards = document.querySelectorAll('.project-card[data-job-status="processing"]');
+            const processingCards = document.querySelectorAll(
+                '.project-card[data-job-status="queued"], .project-card[data-job-status="processing"]'
+            );
             if (processingCards.length === 0) return;
 
             pollingInterval = setInterval(async () => {
@@ -107,14 +142,14 @@
                 }
 
                 for (const card of cards) {
-                    const jobId = card.dataset.jobId;
-                    if (!jobId) continue;
+                    const projectId = card.dataset.projectId;
+                    if (!projectId) continue;
 
                     try {
-                        const res = await fetch(`/api/job/${jobId}/status`);
+                        const res = await fetch(`/api/project/${projectId}/status`);
                         const data = await res.json();
 
-                        if (data.ok && data.status !== 'processing') {
+                        if (data.ok && !['queued', 'processing'].includes(data.status)) {
                             updateProjectCard(card, data.status);
                         }
                     } catch (err) {
@@ -129,19 +164,22 @@
 
             const statusBadge = card.querySelector('.project-status');
             if (statusBadge) {
-                statusBadge.className = `project-status ${newStatus}`;
+                const badgeClass = newStatus === 'queued' ? 'processing' : newStatus;
+                statusBadge.className = `project-status ${badgeClass}`;
                 statusBadge.textContent = newStatus === 'done' ? 'Finalizado' : 
-                                          newStatus === 'error' ? 'Error' : newStatus;
+                                          newStatus === 'error' ? 'Error' :
+                                          newStatus === 'queued' ? 'En cola' :
+                                          newStatus;
             }
 
             const actionsDiv = card.querySelector('.project-actions');
-            const jobId = card.dataset.jobId;
+            const projectId = card.dataset.projectId;
             
-            if (newStatus === 'done' && actionsDiv && jobId) {
+            if (newStatus === 'done' && actionsDiv && projectId) {
                 const stateBtn = actionsDiv.querySelector('.btn-action.secondary:not([style])');
                 if (stateBtn && stateBtn.textContent.includes('Ver Estado')) {
                     stateBtn.outerHTML = `
-                        <a href="/r/${jobId}" class="btn-action primary">
+                        <a href="/r/${projectId}" class="btn-action primary">
                             <i class="bi bi-file-earmark-text"></i>
                             Ver Guion
                         </a>
@@ -176,7 +214,7 @@
                 }
                 
                 container.innerHTML = data.projects.map(s => `
-                    <div class="project-card" data-id="${s.project_id}" data-job-id="${s.job_id || ''}" data-job-status="${s.job_status || ''}">
+                    <div class="project-card" data-id="${s.project_id}" data-project-id="${s.project_id}" data-job-status="${s.job_status || ''}">
                         <div class="project-header">
                             <div>
                                 <h3 class="project-title">${s.project_name || 'Sin título'}</h3>
@@ -185,7 +223,8 @@
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span class="project-status ${getStatusClass(s)}">
                                     ${getStatusText(s)}
-                                </span>
+                            </span>
+                                ${getRetentionTag(s) ? `<span class="project-tag retention">${getRetentionTag(s)}</span>` : ''}
                                 ${s.stylize_errors > 0 ? `<span class="project-tag warning" title="${s.stylize_errors} foto(s) no se pudieron estilizar">⚠ Fotos</span>` : ''}
                             </div>
                         </div>
@@ -193,6 +232,10 @@
                             <span class="project-meta-item">
                                 <i class="bi bi-calendar"></i>
                                 ${formatDate(s.created_at)}
+                            </span>
+                            <span class="project-meta-item">
+                                <i class="bi bi-hourglass-split"></i>
+                                ${formatExpires(s.expires_at)}
                             </span>
                             <span class="project-meta-item">
                                 <i class="bi bi-mic"></i>
@@ -208,14 +251,14 @@
                             </span>
                         </div>
                         <div class="project-actions">
-                            ${s.job_id && s.job_status === 'done' ? `
-                                <a href="/r/${s.job_id}" class="btn-action primary">
+                            ${s.job_status === 'done' ? `
+                                <a href="/r/${s.project_id}" class="btn-action primary">
                                     <i class="bi bi-file-earmark-text"></i>
                                     Ver Guion
                                 </a>
                             ` : ''}
-                            ${s.job_id && s.job_status === 'processing' ? `
-                                <a href="/r/${s.job_id}" class="btn-action secondary">
+                            ${['queued', 'processing'].includes(s.job_status) ? `
+                                <a href="/r/${s.project_id}" class="btn-action secondary">
                                     <i class="bi bi-hourglass-split"></i>
                                     Ver Estado
                                 </a>

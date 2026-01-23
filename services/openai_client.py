@@ -4,7 +4,7 @@ from openai import OpenAI
 _client = None
 
 
-# OpenAI client singleton
+# Singleton cliente OpenAI
 def get_openai_client():
     global _client
     if _client is None:

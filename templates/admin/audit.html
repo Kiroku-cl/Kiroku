@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Auditoría - HILO{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <div class="admin-header">
+        <div>
+            <h1 class="admin-title">Auditoría</h1>
+            <div class="admin-subtitle">Eventos y trazabilidad</div>
+        </div>
+    </div>
+
+    {% include "admin/partials/nav.html" %}
+
+    <div class="admin-header" style="margin-bottom: 16px;">
+        <button type="button" class="btn btn-action danger" id="clear-logs">Borrar logs</button>
+        <button type="button" class="btn btn-action" id="cleanup-events">Limpiar eventos (90 días)</button>
+    </div>
+
+    <div class="admin-panel">
+        <table class="admin-table" id="audit-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Acción</th>
+                    <th>Actor</th>
+                    <th>Target</th>
+                    <th>Detalles</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+    const auditBody = document.querySelector('#audit-table tbody');
+    let auditTable = null;
+
+    function showToast(message) {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `
+            <i class="bi bi-info-circle-fill toast-icon info"></i>
+            <span class="toast-message">${message}</span>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    function formatDate(value) {
+        if (!value) return '-';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '-';
+        return date.toLocaleString('es-ES', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+    }
+
+    function renderLogs(logs) {
+        const rowsHtml = logs.map(entry => {
+            const actor = entry.actor_username || entry.actor_user_id || '-';
+            const target = entry.target_username || entry.target_user_id || '-';
+            const details = entry.details ? JSON.stringify(entry.details) : '-';
+            return `
+                <tr>
+                    <td>${formatDate(entry.created_at)}</td>
+                    <td>${entry.action}</td>
+                    <td>${actor}</td>
+                    <td>${target}</td>
+                    <td>${details}</td>
+                </tr>
+            `;
+        }).join('');
+
+        if (auditTable) {
+            const tempBody = document.createElement('tbody');
+            tempBody.innerHTML = rowsHtml;
+            auditTable.clear();
+            auditTable.rows.add($(tempBody).children());
+            auditTable.draw();
+            return;
+        }
+
+        auditBody.innerHTML = rowsHtml;
+        auditTable = $('#audit-table').DataTable({
+            pageLength: 15,
+            order: [[0, 'desc']],
+            language: {
+                search: 'Buscar',
+                lengthMenu: 'Mostrar _MENU_',
+                info: 'Mostrando _START_ a _END_ de _TOTAL_',
+                paginate: { previous: 'Anterior', next: 'Siguiente' }
+            }
+        });
+    }
+
+    async function loadLogs() {
+        const res = await fetch('/api/admin/audit');
+        const data = await res.json();
+        if (!data.ok) {
+            showToast(data.error || 'Error cargando auditoría');
+            return;
+        }
+        renderLogs(data.logs || []);
+    }
+
+    document.getElementById('clear-logs').addEventListener('click', () => {
+        confirmAction({
+            title: 'Borrar auditoría',
+            message: 'Esta acción eliminará todos los logs.',
+            confirmText: 'Borrar',
+            onConfirm: async () => {
+                const res = await fetch('/api/admin/audit/clear', { method: 'POST' });
+                const data = await res.json();
+                if (!data.ok) {
+                    showToast(data.error || 'Error al borrar auditoría');
+                    return;
+                }
+                loadLogs();
+                showToast('Auditoría vaciada');
+            }
+        });
+    });
+
+    document.getElementById('cleanup-events').addEventListener('click', () => {
+        confirmAction({
+            title: 'Limpiar eventos',
+            message: 'Elimina eventos con más de 90 días.',
+            confirmText: 'Limpiar',
+            onConfirm: async () => {
+                const res = await fetch('/api/admin/cleanup-events', { method: 'POST' });
+                const data = await res.json();
+                if (!data.ok) {
+                    showToast(data.error || 'Error al limpiar eventos');
+                    return;
+                }
+                loadLogs();
+                showToast(`Eventos eliminados: ${data.deleted || 0}`);
+            }
+        });
+    });
+
+    function confirmAction({ title, message, confirmText, onConfirm }) {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+            <div class="modal-card">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="confirm-cancel">Cancelar</button>
+                    <button class="btn btn-action warning" id="confirm-apply">${confirmText}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#confirm-cancel').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('#confirm-apply').addEventListener('click', async () => {
+            await onConfirm();
+            overlay.remove();
+        });
+    }
+
+
+    loadLogs();
+</script>
+{% endblock %}

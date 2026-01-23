@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ job.project_name or 'Resultado' }} - HILO</title>
+    <title>{{ project.project_name or 'Resultado' }} - HILO</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="/static/base.css">
     <link rel="stylesheet" href="/static/result.css">
@@ -20,31 +20,31 @@
     </div>
 
     <div class="result-container">
-        {% if job.status == 'processing' %}
+        {% if project.status in ['queued', 'processing'] %}
         <div class="card">
             <div class="spinner"></div>
             <h1>Procesando...</h1>
             <p class="subtitle">Generando tu guión. Esto puede tomar unos segundos.</p>
         </div>
         
-        {% elif job.status == 'done' %}
+        {% elif project.status == 'done' %}
         <div class="card">
             <div class="status-icon done">
                 <i class="bi bi-check-circle-fill"></i>
             </div>
             <h1>¡Guion listo!</h1>
-            <p class="subtitle">{{ job.project_name or 'Tu guión' }} ha sido generado exitosamente.</p>
+            <p class="subtitle">{{ project.project_name or 'Tu guión' }} ha sido generado exitosamente.</p>
             
             <div class="header-actions" style="justify-content: center;">
-                {% if job.output_file %}
-                <a href="/r/{{ job.job_id }}/download/{{ job.output_file }}" class="btn btn-secondary">
+                {% if project.output_file %}
+                <a href="/r/{{ project.project_id }}/download/{{ project.output_file }}" class="btn btn-secondary">
                     <i class="bi bi-download"></i>
                     Descargar MD
                 </a>
                 {% endif %}
                 
-                {% if job.fallback_file %}
-                <a href="/r/{{ job.job_id }}/download/{{ job.fallback_file }}" class="btn btn-secondary">
+                {% if project.fallback_file %}
+                <a href="/r/{{ project.project_id }}/download/{{ project.fallback_file }}" class="btn btn-secondary">
                     <i class="bi bi-file-text"></i>
                     Transcripción
                 </a>
@@ -70,22 +70,22 @@
             </div>
         </div>
         
-        {% elif job.status == 'error' %}
+        {% elif project.status == 'error' %}
         <div class="card">
             <div class="status-icon error">
                 <i class="bi bi-exclamation-circle-fill"></i>
             </div>
             <h1>Error al procesar</h1>
             
-            {% if job.error %}
-            <div class="error-msg">{{ job.error }}</div>
+            {% if project.error %}
+            <div class="error-msg">{{ project.error }}</div>
             {% endif %}
             
             <p class="subtitle">Hubo un problema generando el guion.</p>
             
             <div class="header-actions" style="justify-content: center;">
-                {% if job.fallback_file %}
-                <a href="/r/{{ job.job_id }}/download/{{ job.fallback_file }}" class="btn btn-primary">
+                {% if project.fallback_file %}
+                <a href="/r/{{ project.project_id }}/download/{{ project.fallback_file }}" class="btn btn-primary">
                     <i class="bi bi-download"></i>
                     Descargar Transcripción
                 </a>
@@ -99,13 +99,13 @@
         <i class="bi bi-check-lg"></i> Copiado al portapapeles
     </div>
 
-    {% if job.status == 'processing' %}
+    {% if project.status in ['queued', 'processing'] %}
     <script>
         setInterval(async () => {
             try {
-                const res = await fetch('/api/job/{{ job.job_id }}/status');
+                const res = await fetch('/api/project/{{ project.project_id }}/status');
                 const data = await res.json();
-                if (data.ok && data.status !== 'processing') {
+                if (data.ok && !['queued', 'processing'].includes(data.status)) {
                     window.location.reload();
                 }
             } catch (err) {
@@ -115,13 +115,13 @@
     </script>
     {% endif %}
 
-    {% if job.status == 'done' %}
+    {% if project.status == 'done' %}
     <script>
-        const jobId = '{{ job.job_id }}';
+        const projectId = '{{ project.project_id }}';
         
         async function loadPreview() {
             try {
-                const res = await fetch(`/api/job/${jobId}/preview`);
+                const res = await fetch(`/api/project/${projectId}/preview`);
                 const data = await res.json();
                 
                 if (data.ok) {

@@ -3,68 +3,118 @@ import re
 import html as html_lib
 
 from flask import Blueprint, jsonify, render_template, send_from_directory
+from flask_login import login_required, current_user
 
 from helpers import is_valid_uuid, encode_image_base64, get_mime_type
-from services import job_processor
+from models import utcnow
+from services import project_store
 
 
 jobs_bp = Blueprint('jobs', __name__)
 
 
-@jobs_bp.route("/api/job/<job_id>/status")
-def job_status(job_id):
-    if not is_valid_uuid(job_id):
-        return jsonify({"ok": False, "error": "invalid job_id"}), 400
 
-    info = job_processor.get_job_info(job_id)
-    if not info:
-        return jsonify({"ok": False, "error": "job not found"}), 404
+@jobs_bp.route("/api/project/<project_id>/status")
+@login_required
+def project_status(project_id):
+    if not is_valid_uuid(project_id):
+        return jsonify({"ok": False, "error": "project_id inválido"}), 400
+
+    record = project_store.get_project_for_user(project_id, current_user.id)
+    if not record:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
 
     return jsonify({
         "ok": True,
-        "status": info["status"],
-        "error": info.get("error"),
-        "output_file": info.get("output_file"),
-        "fallback_file": info.get("fallback_file")
+        "status": record.status,
+        "error": record.error_message,
+        "output_file": record.output_file,
+        "fallback_file": record.fallback_file
     })
 
 
-@jobs_bp.route("/r/<job_id>")
-def result_page(job_id):
-    if not is_valid_uuid(job_id):
-        return "Job no encontrado", 404
-
-    info = job_processor.get_job_info(job_id)
-    if not info:
-        return "Job no encontrado", 404
-
-    return render_template("result.html", job=info)
+@jobs_bp.route("/api/job/<job_id>/status")
+@login_required
+def job_status(job_id):
+    return project_status(job_id)
 
 
-@jobs_bp.route("/r/<job_id>/download/<filename>")
-def download_file(job_id, filename):
-    if not is_valid_uuid(job_id):
-        return "Not found", 404
+@jobs_bp.route("/r/<project_id>")
+@login_required
+def result_page(project_id):
+    if not is_valid_uuid(project_id):
+        return "Proyecto no encontrado", 404
+
+    record = project_store.get_project_for_user(project_id, current_user.id)
+    if not record:
+        return "Proyecto no encontrado", 404
+
+    if record.expires_at and record.expires_at <= utcnow():
+        return "Proyecto expirado", 410
+
+    state = project_store.load_state(project_id) or {}
+
+    info = {
+        "project_id": project_id,
+        "project_name": state.get("project_name", record.title),
+        "participant_name": state.get("participant_name", ""),
+        "status": record.status,
+        "error": record.error_message,
+        "output_file": record.output_file,
+        "fallback_file": record.fallback_file
+    }
+
+    return render_template("result.html", project=info)
+
+
+@jobs_bp.route("/r/<project_id>/download/<filename>")
+@login_required
+def download_file(project_id, filename):
+    if not is_valid_uuid(project_id):
+        return "No encontrado", 404
+
+    record = project_store.get_project_for_user(project_id, current_user.id)
+    if not record:
+        return "No encontrado", 404
+
+    if record.expires_at and record.expires_at <= utcnow():
+        return "Proyecto expirado", 410
 
     safe_filename = os.path.basename(filename)
-    job_dir = job_processor.get_job_dir(job_id)
+    allowed = {record.output_file, record.fallback_file}
+    if safe_filename not in allowed:
+        return "No encontrado", 404
 
-    file_path = os.path.join(job_dir, safe_filename)
+    project_dir = project_store.get_project_dir(project_id)
+    file_path = os.path.join(project_dir, safe_filename)
     if not os.path.exists(file_path):
         return "File not found", 404
 
     mimetype = get_mime_type(safe_filename)
 
-    return send_from_directory(job_dir, safe_filename, as_attachment=True, mimetype=mimetype)
+    return send_from_directory(
+        project_dir,
+        safe_filename,
+        as_attachment=True,
+        mimetype=mimetype
+    )
 
 
-@jobs_bp.route("/api/job/<job_id>/preview")
-def job_preview(job_id):
-    if not is_valid_uuid(job_id):
-        return jsonify({"ok": False, "error": "invalid job_id"}), 400
+@jobs_bp.route("/api/project/<project_id>/preview")
+@login_required
+def project_preview(project_id):
+    if not is_valid_uuid(project_id):
+        return jsonify({"ok": False, "error": "project_id inválido"}), 400
 
-    job_dir = job_processor.get_job_dir(job_id)
-    script_path = os.path.join(job_dir, "script.md")
+    record = project_store.get_project_for_user(project_id, current_user.id)
+    if not record:
+        return jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404
+
+    if record.expires_at and record.expires_at <= utcnow():
+        return jsonify({"ok": False, "error": "Proyecto expirado"}), 410
+
+    project_dir = project_store.get_project_dir(project_id)
+    script_path = os.path.join(project_dir, "script.md")
 
     if not os.path.exists(script_path):
         return jsonify({"ok": False, "error": "script not found"}), 404
@@ -73,23 +123,28 @@ def job_preview(job_id):
         with open(script_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        html = convert_script_to_html(content, job_id)
+        html = convert_script_to_html(content, project_id)
 
         return jsonify({"ok": True, "html": html})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-def convert_script_to_html(content, job_id):
-    job_dir = job_processor.get_job_dir(job_id)
-    photos_dir = os.path.join(job_dir, "photos")
+@jobs_bp.route("/api/job/<job_id>/preview")
+@login_required
+def job_preview(job_id):
+    return project_preview(job_id)
+
+
+def convert_script_to_html(content, project_id):
+    project_dir = project_store.get_project_dir(project_id)
+    photos_dir = os.path.join(project_dir, "photos")
     content = content.strip()
     lines = content.split('\n')
     html_parts = []
     prev_empty = False
 
     for line in lines:
-        # Skip consecutive empty lines
         if not line.strip():
             if not prev_empty:
                 html_parts.append('<div style="height: 1em;"></div>')
@@ -97,7 +152,6 @@ def convert_script_to_html(content, job_id):
             continue
         prev_empty = False
 
-        # Headers
         if line.startswith('# '):
             text = html_lib.escape(line[2:])
             html_parts.append(f'<h1 style="text-align: center; margin-bottom: 0.5em;">{text}</h1>')
@@ -124,7 +178,6 @@ def convert_script_to_html(content, job_id):
             filename = os.path.basename(img_match.group(2))
             img_path = os.path.join(photos_dir, filename)
 
-            # Validación extra
             real_photos_dir = os.path.realpath(photos_dir)
             real_img_path = os.path.realpath(img_path)
             if not real_img_path.startswith(real_photos_dir + os.sep):

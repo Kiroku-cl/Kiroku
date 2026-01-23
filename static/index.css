@@ -26,7 +26,8 @@ header {
     gap: 12px;
 }
 
-.nav-link {
+/* Link de navegación específico del header de grabación */
+header .header-left > .nav-link {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -38,9 +39,10 @@ header {
     text-decoration: none;
     font-size: 18px;
     transition: all 0.2s;
+    padding: 0;
 }
 
-.nav-link:hover {
+header .header-left > .nav-link:hover {
     background: var(--bg-surface-light);
     color: var(--accent);
 }
@@ -691,7 +693,7 @@ header h1 {
     }
 
     /* Ocultar nav-link del header en mobile */
-    .nav-link {
+    header .header-left > .nav-link {
         display: none;
     }
 

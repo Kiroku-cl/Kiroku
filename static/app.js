@@ -67,12 +67,19 @@ class HiloApp {
         this.modalFinish = document.getElementById('modal-finish');
         this.modalDiscard = document.getElementById('modal-discard');
         this.modalContinue = document.getElementById('modal-continue');
+        this.stopModalTitle = document.getElementById('stop-modal-title');
+        this.stopModalSubtitle = document.getElementById('stop-modal-subtitle');
         this.delayValueEl = document.getElementById('photo-delay');
         this.btnDelayMinus = document.getElementById('delay-minus');
         this.btnDelayPlus = document.getElementById('delay-plus');
         this.photoDelay = 3; // default value
         this.stylizeToggle = document.getElementById('stylize-toggle');
         this.stylizePhotos = true; // default
+        this.serverTimeOffset = 0;
+        this.projectStartAtMs = null;
+        this.maxSessionMinutes = null;
+        this.sessionLimitTimer = null;
+        this.sessionLimitReached = false;
         this.btnSettings = document.getElementById('btn-settings');
         this.photoConfig = document.getElementById('photo-config');
         this.nameTag = document.getElementById('name-tag');
@@ -127,7 +134,9 @@ class HiloApp {
         this.modalContinue.addEventListener('click', () => this.continueRecording());
         this.btnDelayMinus.addEventListener('click', () => this.adjustDelay(-1));
         this.btnDelayPlus.addEventListener('click', () => this.adjustDelay(1));
-        this.stylizeToggle.addEventListener('change', () => this.toggleStylize());
+        if (this.stylizeToggle) {
+            this.stylizeToggle.addEventListener('change', () => this.toggleStylize());
+        }
         this.btnSettings.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleSettingsPanel();
@@ -239,11 +248,61 @@ class HiloApp {
     }
 
     showStopModal() {
+        if (this.stopModalTitle) {
+            this.stopModalTitle.textContent = '¿Qué quieres hacer?';
+        }
+        if (this.stopModalSubtitle) {
+            this.stopModalSubtitle.textContent = 'La grabación está pausada';
+        }
+        if (this.modalContinue) {
+            this.modalContinue.style.display = '';
+        }
         this.stopModal.style.display = 'flex';
     }
 
     hideStopModal() {
         this.stopModal.style.display = 'none';
+    }
+
+    showLimitModal() {
+        if (this.stopModalTitle) {
+            this.stopModalTitle.textContent = '¿Qué quieres hacer?';
+        }
+        if (this.stopModalSubtitle) {
+            this.stopModalSubtitle.textContent = 'La grabación está pausada';
+        }
+        if (this.modalContinue) {
+            this.modalContinue.style.display = 'none';
+        }
+        this.stopModal.style.display = 'flex';
+    }
+
+    startSessionLimitWatch() {
+        if (!this.maxSessionMinutes || !this.projectStartAtMs) return;
+        if (this.sessionLimitTimer) {
+            clearInterval(this.sessionLimitTimer);
+        }
+
+        this.sessionLimitTimer = setInterval(() => {
+            if (this.sessionLimitReached || this.state === 'stopped') return;
+            const serverNow = Date.now() + this.serverTimeOffset;
+            const limitAt = this.projectStartAtMs + (this.maxSessionMinutes * 60000);
+            if (serverNow >= limitAt) {
+                this.sessionLimitReached = true;
+                if (this.state === 'recording') {
+                    this.togglePause();
+                }
+                this.showLimitModal();
+            }
+        }, 3000);
+    }
+
+    clearSessionLimitWatch() {
+        if (this.sessionLimitTimer) {
+            clearInterval(this.sessionLimitTimer);
+            this.sessionLimitTimer = null;
+        }
+        this.sessionLimitReached = false;
     }
 
     async finishRecording() {
@@ -295,6 +354,7 @@ class HiloApp {
         this.transcriptEl.textContent = '';
         this.clearPhotoHistory();
         this.exitFullscreen();
+        this.clearSessionLimitWatch();
         this.updateUI();
 
         showToast('Grabación descartada', 'info', 3000);
@@ -488,6 +548,10 @@ class HiloApp {
     }
 
     loadStylizePreference() {
+        if (!this.stylizeToggle) {
+            this.stylizePhotos = false;
+            return;
+        }
         const saved = localStorage.getItem('hilo_stylize_photos');
         if (saved !== null) {
             this.stylizePhotos = saved === 'true';
@@ -496,6 +560,10 @@ class HiloApp {
     }
 
     toggleStylize() {
+        if (!this.stylizeToggle) {
+            this.stylizePhotos = false;
+            return;
+        }
         this.stylizePhotos = this.stylizeToggle.checked;
         localStorage.setItem('hilo_stylize_photos', this.stylizePhotos.toString());
     }
@@ -596,6 +664,13 @@ class HiloApp {
             }
             
             this.projectId = projectData.project_id;
+            this.projectStartAtMs = projectData.recording_started_at ? Date.parse(projectData.recording_started_at) : null;
+            const serverNow = projectData.server_now ? Date.parse(projectData.server_now) : null;
+            if (serverNow) {
+                this.serverTimeOffset = serverNow - Date.now();
+            }
+            this.maxSessionMinutes = projectData.max_session_minutes || null;
+            this.sessionLimitReached = false;
             this.chunkIndex = 0;
             console.log('Project created:', this.projectId);
 
@@ -616,6 +691,7 @@ class HiloApp {
             this.updateUI();
             this.startTimer();
             this.startChunkCycle();
+            this.startSessionLimitWatch();
 
         } catch (err) {
             console.error('Error starting:', err);
@@ -759,6 +835,9 @@ class HiloApp {
                 console.warn('Chunk error:', data.error);
                 if (data.error && data.error.includes('ffmpeg')) {
                     showToast('ffmpeg no instalado', 'error', 8000);
+                } else if (data.error && data.error.toLowerCase().includes('tiempo máximo')) {
+                    this.sessionLimitReached = true;
+                    this.showLimitModal();
                 }
             }
         } catch (err) {
@@ -798,6 +877,7 @@ class HiloApp {
         this.stopTimer();
         this.updateUI();
         this.exitFullscreen();
+        this.clearSessionLimitWatch();
 
         this.statusEl.textContent = 'Procesando último chunk...';
 
@@ -923,6 +1003,10 @@ class HiloApp {
                 this.addPhotoToHistory(dataUrl, photoId);
             } else {
                 showToast(data.error || 'Error al guardar foto', 'error');
+                if (data.error && data.error.toLowerCase().includes('tiempo máximo')) {
+                    this.sessionLimitReached = true;
+                    this.showLimitModal();
+                }
             }
         } catch (err) {
             console.error('Error sending photo:', err);
@@ -990,7 +1074,7 @@ class HiloApp {
         document.body.appendChild(overlay);
     }
 
-    updateProcessingOverlay(resultUrl, jobId) {
+    updateProcessingOverlay(resultUrl, projectId) {
         const overlay = document.getElementById('processing-overlay');
         if (!overlay) return;
 
@@ -1001,13 +1085,13 @@ class HiloApp {
         linkContainer.style.display = 'block';
 
         // Start polling for status
-        this.pollJobStatus(jobId, resultUrl);
+        this.pollJobStatus(projectId, resultUrl);
     }
 
-    async pollJobStatus(jobId, resultUrl) {
+    async pollJobStatus(projectId, resultUrl) {
         const checkStatus = async () => {
             try {
-                const res = await fetch(`/api/job/${jobId}/status`);
+                const res = await fetch(`/api/project/${projectId}/status`);
                 const data = await res.json();
 
                 if (data.ok) {

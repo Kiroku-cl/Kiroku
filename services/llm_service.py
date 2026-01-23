@@ -8,10 +8,18 @@ log = get_logger("llm")
 
 
 def generate_script(transcript_with_markers, participant_name="ACTOR"):
+    script, _usage = generate_script_with_usage(
+        transcript_with_markers,
+        participant_name
+    )
+    return script
+
+
+def generate_script_with_usage(transcript_with_markers, participant_name="ACTOR"):
     client = get_openai_client()
     if not client:
         log.warning("Cliente OpenAI no disponible, retornando raw")
-        return transcript_with_markers
+        return transcript_with_markers, None
 
     try:
         log.info(f"Generando guion para {participant_name}...")
@@ -35,12 +43,19 @@ def generate_script(transcript_with_markers, participant_name="ACTOR"):
         )
 
         result = response.choices[0].message.content.strip()
+        usage = None
+        if getattr(response, "usage", None):
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
         log.info("Guion generado exitosamente")
-        return result
+        return result, usage
 
     except Exception as e:
         log.error(f"Generación LLM falló: {e}")
-        return transcript_with_markers
+        return transcript_with_markers, None
 
 
 def insert_photo_markers(transcript, photos, chunks):
