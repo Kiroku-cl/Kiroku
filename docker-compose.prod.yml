@@ -35,6 +35,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal_net
 
   redis:
     image: redis:7-alpine
@@ -88,5 +90,3 @@ volumes:
 networks:
   internal_net:
     driver: bridge
-    networks:
-      - internal_net
