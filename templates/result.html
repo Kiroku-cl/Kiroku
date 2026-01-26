@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/base.css">
     <link rel="stylesheet" href="/static/result.css">
 </head>
-<body>
+<body data-project-id="{{ project.project_id }}" data-project-status="{{ project.status }}">
     <div class="page-header">
         <a href="/" class="logo">HILO</a>
         <div class="header-actions">
@@ -50,7 +50,7 @@
                 </a>
                 {% endif %}
                 
-                <button onclick="copyPreview()" class="btn btn-primary">
+                <button class="btn btn-primary" data-action="copy-preview">
                     <i class="bi bi-clipboard"></i>
                     Copiar
                 </button>
@@ -60,8 +60,8 @@
                 <div class="preview-header">
                     <h2>Vista previa</h2>
                     <div class="tabs">
-                        <button class="tab active" onclick="setTheme('light')">Claro</button>
-                        <button class="tab" onclick="setTheme('dark')">Oscuro</button>
+                        <button class="tab active" data-theme="light">Claro</button>
+                        <button class="tab" data-theme="dark">Oscuro</button>
                     </div>
                 </div>
                 <div id="preview-content" class="preview-content light">
@@ -99,78 +99,6 @@
         <i class="bi bi-check-lg"></i> Copiado al portapapeles
     </div>
 
-    {% if project.status in ['queued', 'processing'] %}
-    <script>
-        setInterval(async () => {
-            try {
-                const res = await fetch('/api/project/{{ project.project_id }}/status');
-                const data = await res.json();
-                if (data.ok && !['queued', 'processing'].includes(data.status)) {
-                    window.location.reload();
-                }
-            } catch (err) {
-                console.warn('Polling error:', err);
-            }
-        }, 2000);
-    </script>
-    {% endif %}
-
-    {% if project.status == 'done' %}
-    <script>
-        const projectId = '{{ project.project_id }}';
-        
-        async function loadPreview() {
-            try {
-                const res = await fetch(`/api/project/${projectId}/preview`);
-                const data = await res.json();
-                
-                if (data.ok) {
-                    document.getElementById('preview-content').innerHTML = data.html;
-                } else {
-                    document.getElementById('preview-content').textContent = 'Error cargando preview';
-                }
-            } catch (err) {
-                console.error('Error loading preview:', err);
-                document.getElementById('preview-content').textContent = 'Error cargando preview';
-            }
-        }
-        
-        async function copyPreview() {
-            const preview = document.getElementById('preview-content');
-            
-            try {
-                const range = document.createRange();
-                range.selectNodeContents(preview);
-                
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-                
-                document.execCommand('copy');
-                
-                selection.removeAllRanges();
-                
-                const toast = document.getElementById('copy-toast');
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 2000);
-                
-            } catch (err) {
-                console.error('Copy failed:', err);
-                alert('Error al copiar. Intenta seleccionar manualmente.');
-            }
-        }
-        
-        function setTheme(theme) {
-            const preview = document.getElementById('preview-content');
-            preview.classList.remove('light', 'dark');
-            preview.classList.add(theme);
-            
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-        }
-        
-        loadPreview();
-    </script>
-    {% endif %}
+    <script src="/static/dist/app.min.js" type="module"></script>
 </body>
 </html>

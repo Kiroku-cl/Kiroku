@@ -65,6 +65,14 @@ services:
       redis:
         condition: service_started
 
+  assets-watcher:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: sh -lc "npm install && npx vite build --watch"
+    restart: always
+
 volumes:
   postgres_data:
   redis_data:

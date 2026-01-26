@@ -1,5 +1,8 @@
 function showToast(message, type = 'info', duration = 4000) {
     const container = document.getElementById('toast-container');
+    if (!container) {
+        return;
+    }
     const toast = document.createElement('div');
     toast.className = 'toast';
     
@@ -1312,6 +1315,4 @@ class HiloApp {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new HiloApp();
-});
+export { showToast, generateUUID, HiloApp };

@@ -177,40 +177,10 @@
                     <i class="bi bi-key"></i> Cambiar contraseña
                 </a>
                 <div class="dropdown-divider"></div>
-                <button onclick="logout()" class="dropdown-item danger" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
+                <button class="dropdown-item danger" data-logout-button data-logout-url="{{ url_for('auth.api_logout') }}" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
                     <i class="bi bi-box-arrow-right"></i> Cerrar sesión
                 </button>
             </div>
         </li>
     </ul>
 </nav>
-
-<script>
-    async function logout() {
-        try {
-            const response = await fetch("{{ url_for('auth.api_logout') }}", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                }
-            });
-            const data = await response.json();
-            if (data.ok) {
-                window.location.href = data.redirect;
-            } else {
-                if (typeof showToast === 'function') {
-                    showToast(data.error || "Error al cerrar sesión", 'error');
-                } else {
-                    alert(data.error || "Error al cerrar sesión");
-                }
-            }
-        } catch (error) {
-            console.error("Error during logout:", error);
-            if (typeof showToast === 'function') {
-                showToast("Error de red al cerrar sesión", 'error');
-            } else {
-                alert("Error de red al cerrar sesión");
-            }
-        }
-    }
-</script>

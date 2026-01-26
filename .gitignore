@@ -17,3 +17,5 @@ data/
 infra/certs/
 *.key
 *.pem
+node_modules/
+static/dist/
