@@ -171,15 +171,7 @@
 
     {% block content %}{% endblock %}
 
-    <script>
-        // Auto-hide flash messages
-        setTimeout(() => {
-            document.querySelectorAll('.flash').forEach(el => {
-                el.style.animation = 'flash-in 0.3s ease reverse forwards';
-                setTimeout(() => el.remove(), 300);
-            });
-        }, 5000);
-    </script>
+    <script src="{{ url_for('static', filename='dist/app.min.js') }}" type="module"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

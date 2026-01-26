@@ -80,15 +80,6 @@ def register_cli(app):
         finally:
             Session.remove()
 
-    @app.cli.command("db-init")
-    def db_init():
-        # Por si acaso. siempre es mejor hacer las migraciones con alembic
-        from models import Base
-        from extensions import engine
-        Base.metadata.create_all(engine)
-        click.echo("Database tables created.")
-
-
 app = create_app()
 
 
