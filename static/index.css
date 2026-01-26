@@ -1232,6 +1232,10 @@ header h1 {
     backdrop-filter: blur(8px);
 }
 
+.finalizing-overlay {
+    pointer-events: all;
+}
+
 .processing-card {
     text-align: center;
     padding: 48px;

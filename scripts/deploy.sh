@@ -24,6 +24,8 @@ case "$MODE" in
 
     docker compose -f "$ROOT_DIR/docker-compose.yml" up -d --build
 
+    "$ROOT_DIR/scripts/manage.sh" dev migrate
+
     echo "Esperando bundles..."
     start_time=$(date +%s)
     timeout=120

@@ -399,6 +399,7 @@ class HiloApp {
 
     async finishRecording() {
         this.hideStopModal();
+        this.showFinalizingOverlay();
         await this.stop();
     }
 
@@ -842,14 +843,31 @@ class HiloApp {
         // Return a promise that resolves when current chunk finishes
         return new Promise((resolve) => {
             if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                let resolved = false;
+                const timeoutId = setTimeout(() => {
+                    if (resolved) return;
+                    resolved = true;
+                    console.warn('Final chunk timeout, continuing without last chunk');
+                    resolve();
+                }, 3000);
+
                 // Set up a one-time listener for when recording finishes
                 const originalOnStop = this.mediaRecorder.onstop;
                 this.mediaRecorder.onstop = async (e) => {
                     if (originalOnStop) await originalOnStop(e);
                     // Wait a bit for sendChunk to complete
                     await this.waitForPendingChunks();
-                    resolve();
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeoutId);
+                        resolve();
+                    }
                 };
+                try {
+                    this.mediaRecorder.requestData();
+                } catch (err) {
+                    console.warn('requestData failed:', err);
+                }
                 this.mediaRecorder.stop();
             } else {
                 // No active recorder, wait for pending chunks
@@ -1015,11 +1033,14 @@ class HiloApp {
                 const data = await res.json();
                 
                 if (data.ok) {
+                    this.hideFinalizingOverlay();
                     this.showStopConfirmation();
                 } else {
+                    this.hideFinalizingOverlay();
                     showToast(data.error || 'Error al procesar', 'error');
                 }
             } catch (err) {
+                this.hideFinalizingOverlay();
                 console.warn('Error stopping project:', err);
                 showToast('Error de conexión', 'error');
             }
@@ -1061,6 +1082,31 @@ class HiloApp {
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) overlay.remove();
         });
+    }
+
+    showFinalizingOverlay() {
+        const existing = document.getElementById('finalizing-overlay');
+        if (existing) {
+            return;
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'finalizing-overlay';
+        overlay.className = 'processing-overlay finalizing-overlay';
+        overlay.innerHTML = `
+            <div class="processing-card">
+                <div class="processing-spinner"></div>
+                <h2>Procesando último chunk</h2>
+                <p>No cierres esta ventana todavía</p>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+
+    hideFinalizingOverlay() {
+        const overlay = document.getElementById('finalizing-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
     }
 
     async capturePhoto() {

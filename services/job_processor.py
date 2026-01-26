@@ -7,6 +7,8 @@ from services.llm_service import (
     replace_markers_with_images
 )
 from services.image_stylize import stylize_image
+from extensions import Session
+from models import log_audit
 
 log = get_logger("job")
 
@@ -46,6 +48,7 @@ def process_project(project_id):
 
         photos = timeline.get_photos(project_id)
         stylize_errors = 0
+        stylize_attempts = 0
 
         if should_stylize:
             for photo in photos:
@@ -60,6 +63,8 @@ def process_project(project_id):
                             )
                         if not reserve_ok:
                             continue
+
+                        stylize_attempts += 1
 
                         stylized_name = f"stylized_{photo['photo_id']}.jpg"
                         stylized_path = os.path.join(
@@ -83,6 +88,24 @@ def process_project(project_id):
                 log.warning(
                     f"Proyecto {project_id}: {stylize_errors} fotos sin estilizar"
                 )
+                if user_id and stylize_attempts:
+                    db = Session()
+                    try:
+                        log_audit(
+                            db,
+                            action="photo_stylize_failed",
+                            actor_user_id=user_id,
+                            target_user_id=user_id,
+                            details={
+                                "project_id": project_id,
+                                "failed_count": stylize_errors,
+                                "attempted_count": stylize_attempts,
+                                "total_photos": len(photos)
+                            }
+                        )
+                        db.commit()
+                    finally:
+                        Session.remove()
         else:
             log.info(f"Proyecto {project_id}: Estilización desactivada")
 
