@@ -39,6 +39,10 @@
                 </a>
                 <h1>HILO</h1>
                 <span class="header-divider">/</span>
+                <!-- Botón config flotante (solo mobile) -->
+                <button id="btn-settings" class="btn-settings-toggle" title="Configuración">
+                    <i class="bi bi-gear"></i>
+                </button>
                 <input type="text" id="project-input" placeholder="Sin título" maxlength="50">
             </div>
             <div class="status-bar">
@@ -56,7 +60,9 @@
 
             <section class="right-panel">
                 <div class="video-wrapper">
-                    <video id="preview" autoplay muted playsinline></video>
+                    <div class="preview-rotator">
+                        <video id="preview" autoplay muted playsinline></video>
+                    </div>
                     <!-- Etiqueta de nombre clickeable -->
                     <div id="name-tag" class="name-tag" title="Click para editar">
                         <span class="name-tag-text">NOMBRE</span>
@@ -70,10 +76,6 @@
                 <!-- Botón cambiar cámara (solo mobile) -->
                 <button id="btn-switch-camera" class="btn-switch-camera" title="Cambiar cámara">
                     <i class="bi bi-arrow-repeat"></i>
-                </button>
-                <!-- Botón config flotante (solo mobile) -->
-                <button id="btn-settings" class="btn-settings-toggle" title="Configuración">
-                    <i class="bi bi-gear"></i>
                 </button>
                 <!-- Panel de controles inferior -->
                 <div class="bottom-controls">

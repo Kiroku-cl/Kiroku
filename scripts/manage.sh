@@ -6,7 +6,7 @@ ACTION=${2:-}
 MESSAGE=${3:-}
 
 if [[ -z "$MODE" || -z "$ACTION" ]]; then
-  echo "Uso: scripts/manage.sh dev|prod migrate|revision|admin-create|status [mensaje]"
+  echo "Uso: scripts/manage.sh dev|prod migrate|build-assets|revision|admin-create|status [mensaje]"
   exit 1
 fi
 
@@ -30,6 +30,15 @@ ensure_web_running() {
   fi
 }
 
+ensure_assets_running() {
+  local running
+  running=$("${COMPOSE[@]}" ps --services --filter "status=running" | grep -x "assets-watcher" || true)
+  if [[ -z "$running" ]]; then
+    echo "El servicio de assets no está activo. Ejecuta deploy primero."
+    exit 1
+  fi
+}
+
 case "$ACTION" in
   migrate)
     ensure_web_running
@@ -42,6 +51,10 @@ case "$ACTION" in
     fi
     ensure_web_running
     "${COMPOSE[@]}" exec web alembic revision --autogenerate -m "$MESSAGE"
+    ;;
+  build-assets)
+    ensure_assets_running
+    "${COMPOSE[@]}" exec assets-watcher npm run build
     ;;
   admin-create)
     ensure_web_running

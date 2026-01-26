@@ -109,6 +109,7 @@ class HiloApp {
     async init() {
         // Click normal para start/stop
         this.btnStart.addEventListener('click', (e) => {
+            this.requestFullscreenOnMobile();
             if (!this.longPressTriggered) {
                 this.toggleStartStop();
             }
@@ -190,6 +191,13 @@ class HiloApp {
         this.loadPhotoDelay();
         this.loadName();
         this.loadStylizePreference();
+
+        this.updateOrientationClasses();
+        window.addEventListener('orientationchange', () => this.updateOrientationClasses());
+        window.addEventListener('resize', () => this.updateOrientationClasses());
+        if (screen.orientation && screen.orientation.addEventListener) {
+            screen.orientation.addEventListener('change', () => this.updateOrientationClasses());
+        }
         
         // Load config from server
         try {
@@ -200,6 +208,72 @@ class HiloApp {
         } catch (err) {
             console.warn('Could not load config, using defaults');
         }
+    }
+
+
+    updateOrientationClasses() {
+        const body = document.body;
+        if (!body) return;
+
+        const isMobile = window.innerWidth <= 900;
+        const isLandscape = isMobile && window.matchMedia('(orientation: landscape)').matches;
+        body.classList.toggle('is-landscape', isLandscape);
+        if (!isLandscape) {
+            body.classList.remove('landscape-left', 'landscape-right');
+            return;
+        }
+
+        let angle = 0;
+        if (screen.orientation && typeof screen.orientation.angle === 'number') {
+            angle = screen.orientation.angle;
+        } else if (typeof window.orientation === 'number') {
+            angle = window.orientation;
+        }
+
+        let isLeft = false;
+        let isRight = false;
+
+        if (screen.orientation && typeof screen.orientation.type === 'string') {
+            if (screen.orientation.type.includes('landscape-primary')) {
+                isLeft = true;
+            } else if (screen.orientation.type.includes('landscape-secondary')) {
+                isRight = true;
+            }
+        }
+
+        if (!isLeft && !isRight) {
+            const normalized = ((angle % 360) + 360) % 360;
+            if (normalized === 90) {
+                isLeft = true;
+            } else if (normalized === 270) {
+                isRight = true;
+            }
+        }
+
+        if (!isLeft && !isRight) {
+            isLeft = true;
+        }
+
+        body.classList.toggle('landscape-left', isLeft);
+        body.classList.toggle('landscape-right', isRight);
+
+        this.applyLandscapeControlSpacing(isLandscape);
+    }
+
+    applyLandscapeControlSpacing(isLandscape) {
+        const mainControls = document.querySelector('.main-controls');
+        if (!mainControls) return;
+        if (isLandscape) {
+            mainControls.style.gap = 'clamp(16px, 4vw, 32px)';
+        } else {
+            mainControls.style.gap = '';
+        }
+    }
+
+    updateMirrorState() {
+        if (!this.videoEl) return;
+        const shouldMirror = this.facingMode === 'user';
+        this.videoEl.classList.toggle('mirror', shouldMirror);
     }
 
     handleKeyboard(e) {
@@ -456,11 +530,11 @@ class HiloApp {
     }
 
     requestFullscreenOnMobile() {
-        // Solo en mobile (pantallas pequeñas)
-        if (window.innerWidth > 700) return;
-        
+        const minSide = Math.min(window.innerWidth, window.innerHeight);
+        if (minSide > 900) return;
+
         const elem = document.documentElement;
-        
+
         if (elem.requestFullscreen) {
             elem.requestFullscreen().catch(() => {});
         } else if (elem.webkitRequestFullscreen) {
@@ -510,6 +584,7 @@ class HiloApp {
 
             // Actualizar video element
             this.videoEl.srcObject = this.stream;
+            this.updateMirrorState();
 
         } catch (err) {
             console.error('Error switching camera:', err);
@@ -777,6 +852,7 @@ class HiloApp {
 
             // 3. Iniciar grabación
             this.videoEl.srcObject = this.stream;
+            this.updateMirrorState();
 
             this.state = 'recording';
             this.startTime = Date.now();
@@ -984,6 +1060,7 @@ class HiloApp {
             this.stopTimer(false);
             this.stopChunkCycle();
         } else if (this.state === 'paused') {
+            this.requestFullscreenOnMobile();
             this.state = 'recording';
             this.startTime = Date.now() - this.pausedElapsed;
             this.startTimePerf = performance.now() - this.pausedElapsed;
@@ -1326,6 +1403,12 @@ class HiloApp {
             this.statusEl.classList.add('paused');
         } else {
             this.statusEl.textContent = '';
+        }
+
+        const body = document.body;
+        if (body) {
+            const isLandscape = body.classList.contains('is-landscape');
+            this.applyLandscapeControlSpacing(isLandscape);
         }
     }
 
