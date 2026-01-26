@@ -77,9 +77,11 @@ class HiloApp {
         this.stylizePhotos = true; // default
         this.serverTimeOffset = 0;
         this.projectStartAtMs = null;
-        this.maxSessionMinutes = null;
+        this.recordingLimitSeconds = null;
+        this.recordingTotalSeconds = null;
         this.sessionLimitTimer = null;
         this.sessionLimitReached = false;
+        this.noMinutesTimer = null;
         this.btnSettings = document.getElementById('btn-settings');
         this.photoConfig = document.getElementById('photo-config');
         this.nameTag = document.getElementById('name-tag');
@@ -92,6 +94,11 @@ class HiloApp {
         this.transcriptEl = document.getElementById('transcript');
         this.videoEl = document.getElementById('preview');
         this.photoHistoryEl = document.getElementById('photo-history');
+        this.noMinutesModal = document.getElementById('no-minutes-modal');
+        this.noMinutesTitle = document.getElementById('no-minutes-title');
+        this.noMinutesSubtitle = document.getElementById('no-minutes-subtitle');
+        this.noMinutesCountdown = document.getElementById('no-minutes-countdown');
+        this.noMinutesClose = document.getElementById('no-minutes-close');
 
         this.init();
     }
@@ -132,6 +139,16 @@ class HiloApp {
         this.modalFinish.addEventListener('click', () => this.finishRecording());
         this.modalDiscard.addEventListener('click', () => this.discardRecording());
         this.modalContinue.addEventListener('click', () => this.continueRecording());
+        if (this.noMinutesClose) {
+            this.noMinutesClose.addEventListener('click', () => this.hideNoMinutesModal());
+        }
+        if (this.noMinutesModal) {
+            this.noMinutesModal.addEventListener('click', (e) => {
+                if (e.target === this.noMinutesModal) {
+                    this.hideNoMinutesModal();
+                }
+            });
+        }
         this.btnDelayMinus.addEventListener('click', () => this.adjustDelay(-1));
         this.btnDelayPlus.addEventListener('click', () => this.adjustDelay(1));
         if (this.stylizeToggle) {
@@ -266,10 +283,10 @@ class HiloApp {
 
     showLimitModal() {
         if (this.stopModalTitle) {
-            this.stopModalTitle.textContent = '¿Qué quieres hacer?';
+            this.stopModalTitle.textContent = 'Te quedaste sin minutos';
         }
         if (this.stopModalSubtitle) {
-            this.stopModalSubtitle.textContent = 'La grabación está pausada';
+            this.stopModalSubtitle.textContent = 'Puedes procesar o descartar esta grabación';
         }
         if (this.modalContinue) {
             this.modalContinue.style.display = 'none';
@@ -278,7 +295,7 @@ class HiloApp {
     }
 
     startSessionLimitWatch() {
-        if (!this.maxSessionMinutes || !this.projectStartAtMs) return;
+        if (!this.recordingLimitSeconds || !this.projectStartAtMs) return;
         if (this.sessionLimitTimer) {
             clearInterval(this.sessionLimitTimer);
         }
@@ -286,7 +303,7 @@ class HiloApp {
         this.sessionLimitTimer = setInterval(() => {
             if (this.sessionLimitReached || this.state === 'stopped') return;
             const serverNow = Date.now() + this.serverTimeOffset;
-            const limitAt = this.projectStartAtMs + (this.maxSessionMinutes * 60000);
+            const limitAt = this.projectStartAtMs + (this.recordingLimitSeconds * 1000);
             if (serverNow >= limitAt) {
                 this.sessionLimitReached = true;
                 if (this.state === 'recording') {
@@ -303,6 +320,78 @@ class HiloApp {
             this.sessionLimitTimer = null;
         }
         this.sessionLimitReached = false;
+    }
+
+    formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    formatCountdown(msRemaining) {
+        const totalMinutes = Math.max(0, Math.floor(msRemaining / 60000));
+        const days = Math.floor(totalMinutes / (60 * 24));
+        const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+        const minutes = totalMinutes % 60;
+        const parts = [];
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0 || days > 0) parts.push(`${hours}h`);
+        parts.push(`${minutes}m`);
+        return parts.join(' ');
+    }
+
+    showNoMinutesModal(resetAtIso) {
+        if (!this.noMinutesModal) return;
+        if (this.noMinutesTitle) {
+            this.noMinutesTitle.textContent = 'Sin minutos disponibles';
+        }
+        if (this.noMinutesSubtitle) {
+            this.noMinutesSubtitle.textContent = 'Te quedaste sin minutos de grabación.';
+        }
+        if (this.noMinutesTimer) {
+            clearInterval(this.noMinutesTimer);
+            this.noMinutesTimer = null;
+        }
+
+        const updateCountdown = () => {
+            if (!this.noMinutesCountdown) return;
+            if (!resetAtIso) {
+                this.noMinutesCountdown.textContent = 'Tu admin debe resetear tu cuota.';
+                return;
+            }
+            const resetAt = Date.parse(resetAtIso);
+            if (Number.isNaN(resetAt)) {
+                this.noMinutesCountdown.textContent = 'Tu admin debe resetear tu cuota.';
+                return;
+            }
+            const remainingMs = resetAt - (Date.now() + this.serverTimeOffset);
+            if (remainingMs <= 0) {
+                this.noMinutesCountdown.textContent = 'Ya puedes grabar.';
+                if (this.noMinutesTimer) {
+                    clearInterval(this.noMinutesTimer);
+                    this.noMinutesTimer = null;
+                }
+                return;
+            }
+            const formatted = this.formatCountdown(remainingMs);
+            this.noMinutesCountdown.textContent = `Se reinicia en ${formatted}`;
+        };
+
+        updateCountdown();
+        if (resetAtIso) {
+            this.noMinutesTimer = setInterval(updateCountdown, 60000);
+        }
+
+        this.noMinutesModal.style.display = 'flex';
+    }
+
+    hideNoMinutesModal() {
+        if (!this.noMinutesModal) return;
+        if (this.noMinutesTimer) {
+            clearInterval(this.noMinutesTimer);
+            this.noMinutesTimer = null;
+        }
+        this.noMinutesModal.style.display = 'none';
     }
 
     async finishRecording() {
@@ -355,6 +444,8 @@ class HiloApp {
         this.clearPhotoHistory();
         this.exitFullscreen();
         this.clearSessionLimitWatch();
+        this.recordingLimitSeconds = null;
+        this.recordingTotalSeconds = null;
         this.updateUI();
 
         showToast('Grabación descartada', 'info', 3000);
@@ -659,17 +750,23 @@ class HiloApp {
                 // Detener stream si falla la creación del proyecto
                 this.stream.getTracks().forEach(track => track.stop());
                 this.stream = null;
-                showToast(`Error creando proyecto: ${projectData.error}`, 'error');
+                if (projectData.recording_remaining_seconds === 0) {
+                    this.showNoMinutesModal(projectData.recording_reset_at);
+                } else {
+                    showToast(`Error creando proyecto: ${projectData.error}`, 'error');
+                }
                 return;
             }
-            
+
             this.projectId = projectData.project_id;
+            this.hideNoMinutesModal();
             this.projectStartAtMs = projectData.recording_started_at ? Date.parse(projectData.recording_started_at) : null;
             const serverNow = projectData.server_now ? Date.parse(projectData.server_now) : null;
             if (serverNow) {
                 this.serverTimeOffset = serverNow - Date.now();
             }
-            this.maxSessionMinutes = projectData.max_session_minutes || null;
+            this.recordingLimitSeconds = projectData.recording_remaining_seconds ?? null;
+            this.recordingTotalSeconds = projectData.recording_total_seconds ?? null;
             this.sessionLimitReached = false;
             this.chunkIndex = 0;
             console.log('Project created:', this.projectId);
@@ -835,8 +932,11 @@ class HiloApp {
                 console.warn('Chunk error:', data.error);
                 if (data.error && data.error.includes('ffmpeg')) {
                     showToast('ffmpeg no instalado', 'error', 8000);
-                } else if (data.error && data.error.toLowerCase().includes('tiempo máximo')) {
+                } else if (data.error && data.error.toLowerCase().includes('tiempo de grabación')) {
                     this.sessionLimitReached = true;
+                    if (this.state === 'recording') {
+                        this.togglePause();
+                    }
                     this.showLimitModal();
                 }
             }
@@ -878,6 +978,8 @@ class HiloApp {
         this.updateUI();
         this.exitFullscreen();
         this.clearSessionLimitWatch();
+        this.recordingLimitSeconds = null;
+        this.recordingTotalSeconds = null;
 
         this.statusEl.textContent = 'Procesando último chunk...';
 
@@ -1003,8 +1105,11 @@ class HiloApp {
                 this.addPhotoToHistory(dataUrl, photoId);
             } else {
                 showToast(data.error || 'Error al guardar foto', 'error');
-                if (data.error && data.error.toLowerCase().includes('tiempo máximo')) {
+                if (data.error && data.error.toLowerCase().includes('tiempo de grabación')) {
                     this.sessionLimitReached = true;
+                    if (this.state === 'recording') {
+                        this.togglePause();
+                    }
                     this.showLimitModal();
                 }
             }
@@ -1179,11 +1284,19 @@ class HiloApp {
         this.timerInterval = setInterval(() => {
             if (!this.startTime) return;
             const elapsed = Date.now() - this.startTime;
-            const mins = Math.floor(elapsed / 60000);
-            const secs = Math.floor((elapsed % 60000) / 1000);
-            const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-            this.timerEl.textContent = timeStr;
-            if (this.mobileTimerEl) this.mobileTimerEl.textContent = timeStr;
+            const elapsedSeconds = Math.floor(elapsed / 1000);
+            const elapsedStr = this.formatTime(elapsedSeconds);
+            let display = elapsedStr;
+            if (this.recordingLimitSeconds !== null && this.recordingLimitSeconds !== undefined) {
+                const remainingSeconds = Math.max(
+                    0,
+                    this.recordingLimitSeconds - elapsedSeconds
+                );
+                const remainingStr = this.formatTime(remainingSeconds);
+                display = `${elapsedStr} - ${remainingStr}`;
+            }
+            this.timerEl.textContent = display;
+            if (this.mobileTimerEl) this.mobileTimerEl.textContent = display;
         }, 100);
     }
 

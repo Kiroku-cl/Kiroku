@@ -1,4 +1,5 @@
 import secrets
+import re
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 
@@ -239,10 +240,14 @@ def list_users():
                     "is_active": user.is_active,
                     "must_change_password": user.must_change_password,
                     "can_stylize_images": user.can_stylize_images,
-                    "daily_script_quota": user.daily_script_quota,
                     "daily_stylize_quota": user.daily_stylize_quota,
-                    "max_session_minutes": user.max_session_minutes,
-                    "scripts_used_in_window": user.scripts_used_in_window,
+                    "recording_minutes_quota": user.recording_minutes_quota,
+                    "recording_seconds_used": user.recording_seconds_used,
+                    "recording_window_days": user.recording_window_days,
+                    "recording_window_started_at": (
+                        user.recording_window_started_at.isoformat()
+                        if user.recording_window_started_at else None
+                    ),
                     "stylizes_used_in_window": user.stylizes_used_in_window,
                     "created_at": (
                         user.created_at.isoformat() if user.created_at else None
@@ -264,14 +269,13 @@ def list_users():
 def create_user():
     data = request.get_json() or {}
     username = data.get("username", "").strip()
-    is_active = data.get("is_active", True)
 
-    daily_script_quota, error = _parse_optional_int(
-        data.get("daily_script_quota"),
-        "daily_script_quota"
-    )
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
+    if not re.match(r"^[a-z0-9_]+$", username):
+        return jsonify({
+            "ok": False,
+            "error": "El username solo puede contener letras minúsculas, números y guion bajo"
+        }), 400
+    is_active = data.get("is_active", True)
 
     daily_stylize_quota, error = _parse_optional_int(
         data.get("daily_stylize_quota"),
@@ -280,9 +284,16 @@ def create_user():
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
-    max_session_minutes, error = _parse_optional_int(
-        data.get("max_session_minutes"),
-        "max_session_minutes"
+    recording_minutes_quota, error = _parse_optional_int(
+        data.get("recording_minutes_quota"),
+        "recording_minutes_quota"
+    )
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    recording_window_days, error = _parse_optional_int(
+        data.get("recording_window_days"),
+        "recording_window_days"
     )
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -306,9 +317,9 @@ def create_user():
             is_active=bool(is_active),
             must_change_password=True,
             can_stylize_images=can_stylize_images,
-            daily_script_quota=daily_script_quota if daily_script_quota is not None else 10,
             daily_stylize_quota=daily_stylize_quota,
-            max_session_minutes=max_session_minutes
+            recording_minutes_quota=recording_minutes_quota,
+            recording_window_days=recording_window_days
         )
         user.set_password(temp_password)
 
@@ -638,13 +649,6 @@ def update_user_flags(user_id):
 
     data = request.get_json() or {}
 
-    daily_script_quota, error = _parse_optional_int(
-        data.get("daily_script_quota"),
-        "daily_script_quota"
-    )
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
-
     daily_stylize_quota, error = _parse_optional_int(
         data.get("daily_stylize_quota"),
         "daily_stylize_quota"
@@ -652,9 +656,16 @@ def update_user_flags(user_id):
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
-    max_session_minutes, error = _parse_optional_int(
-        data.get("max_session_minutes"),
-        "max_session_minutes"
+    recording_minutes_quota, error = _parse_optional_int(
+        data.get("recording_minutes_quota"),
+        "recording_minutes_quota"
+    )
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    recording_window_days, error = _parse_optional_int(
+        data.get("recording_window_days"),
+        "recording_window_days"
     )
     if error:
         return jsonify({"ok": False, "error": error}), 400
@@ -673,17 +684,17 @@ def update_user_flags(user_id):
             user.can_stylize_images = bool(can_stylize_images)
             changes["can_stylize_images"] = user.can_stylize_images
 
-        if daily_script_quota is not None:
-            user.daily_script_quota = daily_script_quota
-            changes["daily_script_quota"] = daily_script_quota
-
         if "daily_stylize_quota" in data:
             user.daily_stylize_quota = daily_stylize_quota
             changes["daily_stylize_quota"] = daily_stylize_quota
 
-        if "max_session_minutes" in data:
-            user.max_session_minutes = max_session_minutes
-            changes["max_session_minutes"] = max_session_minutes
+        if "recording_minutes_quota" in data:
+            user.recording_minutes_quota = recording_minutes_quota
+            changes["recording_minutes_quota"] = recording_minutes_quota
+
+        if "recording_window_days" in data:
+            user.recording_window_days = recording_window_days
+            changes["recording_window_days"] = recording_window_days
 
         if not changes:
             return jsonify({"ok": False, "error": "Sin cambios"}), 400
@@ -706,9 +717,14 @@ def update_user_flags(user_id):
             "user": {
                 "id": str(user.id),
                 "can_stylize_images": user.can_stylize_images,
-                "daily_script_quota": user.daily_script_quota,
                 "daily_stylize_quota": user.daily_stylize_quota,
-                "max_session_minutes": user.max_session_minutes
+                "recording_minutes_quota": user.recording_minutes_quota,
+                "recording_seconds_used": user.recording_seconds_used,
+                "recording_window_days": user.recording_window_days,
+                "recording_window_started_at": (
+                    user.recording_window_started_at.isoformat()
+                    if user.recording_window_started_at else None
+                )
             }
         })
     finally:
@@ -724,15 +740,8 @@ def update_user_quota(user_id):
 
     data = request.get_json() or {}
 
-    reset_script = bool(data.get("reset_script"))
     reset_stylize = bool(data.get("reset_stylize"))
-
-    extra_scripts, error = _parse_optional_int(
-        data.get("extra_scripts"),
-        "extra_scripts"
-    )
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
+    reset_recording = bool(data.get("reset_recording"))
 
     extra_stylizes, error = _parse_optional_int(
         data.get("extra_stylizes"),
@@ -741,7 +750,11 @@ def update_user_quota(user_id):
     if error:
         return jsonify({"ok": False, "error": error}), 400
 
-    if not any([reset_script, reset_stylize, extra_scripts, extra_stylizes]):
+    if not any([
+        reset_stylize,
+        reset_recording,
+        extra_stylizes
+    ]):
         return jsonify({"ok": False, "error": "Sin cambios"}), 400
 
     db = Session()
@@ -753,20 +766,15 @@ def update_user_quota(user_id):
         now = utcnow()
         changes = {}
 
-        if reset_script:
-            user.scripts_used_in_window = 0
-            user.quota_window_started_at = now
-            changes["scripts_used_in_window"] = 0
-
         if reset_stylize:
             user.stylizes_used_in_window = 0
             user.stylize_window_started_at = now
             changes["stylizes_used_in_window"] = 0
 
-        if extra_scripts:
-            current = user.scripts_used_in_window or 0
-            user.scripts_used_in_window = max(0, current - extra_scripts)
-            changes["extra_scripts"] = extra_scripts
+        if reset_recording:
+            user.recording_seconds_used = 0
+            user.recording_window_started_at = now
+            changes["recording_seconds_used"] = 0
 
         if extra_stylizes:
             current = user.stylizes_used_in_window or 0
@@ -788,15 +796,15 @@ def update_user_quota(user_id):
             "ok": True,
             "user": {
                 "id": str(user.id),
-                "scripts_used_in_window": user.scripts_used_in_window,
-                "quota_window_started_at": (
-                    user.quota_window_started_at.isoformat()
-                    if user.quota_window_started_at else None
-                ),
                 "stylizes_used_in_window": user.stylizes_used_in_window,
                 "stylize_window_started_at": (
                     user.stylize_window_started_at.isoformat()
                     if user.stylize_window_started_at else None
+                ),
+                "recording_seconds_used": user.recording_seconds_used,
+                "recording_window_started_at": (
+                    user.recording_window_started_at.isoformat()
+                    if user.recording_window_started_at else None
                 )
             }
         })

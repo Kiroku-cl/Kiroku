@@ -111,6 +111,7 @@ def create_project(
         "stylize_photos": True,
         "created_at": recording_started_at,
         "recording_started_at": recording_started_at,
+        "recording_limit_seconds": None,
         "expires_at": expires_at.isoformat(),
         "stopped_at": None,
         "quota_reserved": quota_reserved,
@@ -206,18 +207,30 @@ def _parse_state_datetime(value):
     return parsed
 
 
-def is_recording_time_exceeded(project_id, max_minutes):
-    if not max_minutes:
-        return False
+def get_recording_elapsed_seconds(project_id):
     state = load_state(project_id)
     if not state:
-        return False
+        return None
     started_at = _parse_state_datetime(
         state.get("recording_started_at") or state.get("created_at")
     )
     if not started_at:
+        return None
+    elapsed = utcnow() - started_at
+    return max(0, int(elapsed.total_seconds()))
+
+
+def is_recording_limit_exceeded(project_id):
+    state = load_state(project_id)
+    if not state:
         return False
-    return utcnow() - started_at >= timedelta(minutes=max_minutes)
+    limit_seconds = state.get("recording_limit_seconds")
+    if not limit_seconds:
+        return False
+    elapsed_seconds = get_recording_elapsed_seconds(project_id)
+    if elapsed_seconds is None:
+        return False
+    return elapsed_seconds >= int(limit_seconds)
 
 
 def is_quota_reserved(project_id):

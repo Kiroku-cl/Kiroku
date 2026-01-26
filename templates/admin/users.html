@@ -71,21 +71,21 @@
             const statusBadge = user.is_active ? '<span class="badge success">Activo</span>' : '<span class="badge error">Inactivo</span>';
             const adminBadge = user.is_admin ? '<span class="badge warning">Admin</span>' : '';
             const stylize = user.can_stylize_images ? 'Stylize' : 'Sin stylize';
+            const recordingUsedMinutes = Math.floor((user.recording_seconds_used || 0) / 60);
+            const recordingQuota = user.recording_minutes_quota ?? '∞';
+            const recordingWindow = user.recording_window_days ? `cada ${user.recording_window_days}d` : 'sin reset';
             const quotas = `
                 <div class="quota-stack">
-                    <div class="quota-item">
-                        <span class="quota-label">Guiones</span>
-                        <span class="quota-value">${user.daily_script_quota}</span>
-                        <span class="quota-pill">usados ${user.scripts_used_in_window}</span>
-                    </div>
                     <div class="quota-item">
                         <span class="quota-label">Stylize</span>
                         <span class="quota-value">${user.daily_stylize_quota ?? '∞'}</span>
                         <span class="quota-pill">usados ${user.stylizes_used_in_window}</span>
                     </div>
                     <div class="quota-item">
-                        <span class="quota-label">Sesión</span>
-                        <span class="quota-value">${user.max_session_minutes ?? '∞'} min</span>
+                        <span class="quota-label">Grabación</span>
+                        <span class="quota-value">${recordingQuota} min</span>
+                        <span class="quota-pill">${recordingWindow}</span>
+                        <span class="quota-pill">usados ${recordingUsedMinutes} min</span>
                     </div>
                 </div>
             `;
@@ -155,20 +155,36 @@
         openCreateUser();
     });
 
-    function showTempPassword(username, tempPassword) {
+    function showTempPassword(username, tempPassword, message) {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
+        const bodyMessage = message || `Usuario creado correctamente. Entrega esta contraseña solo una vez a <strong>${username}</strong>.`;
         overlay.innerHTML = `
             <div class="modal-card">
                 <h3>Contraseña temporal</h3>
-                <p>Usuario creado correctamente. Entrega esta contraseña solo una vez a <strong>${username}</strong>.</p>
-                <div class="form-control" style="margin-top: 12px;">${tempPassword}</div>
+                <p>${bodyMessage}</p>
+                <div class="temp-password-row">
+                    <div class="form-control temp-password-value">${tempPassword}</div>
+                    <button class="btn btn-action" data-copy-password>
+                        <i class="bi bi-clipboard"></i>
+                        Copiar
+                    </button>
+                </div>
                 <div class="modal-actions">
-                    <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">Cerrar</button>
+                    <button class="btn btn-primary" data-close-modal>Cerrar</button>
                 </div>
             </div>
         `;
         document.body.appendChild(overlay);
+        overlay.querySelector('[data-close-modal]').addEventListener('click', () => overlay.remove());
+        overlay.querySelector('[data-copy-password]').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(tempPassword);
+                showToast('Contraseña copiada');
+            } catch (err) {
+                showToast('No se pudo copiar', 'error');
+            }
+        });
     }
 
     async function deactivateUser(userId, username) {
@@ -239,30 +255,36 @@
                         <input type="text" class="form-control" id="create-username" placeholder="usuario" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Cuota diaria guiones</label>
-                        <input type="number" class="form-control" id="create-script" min="0" value="10">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Cuota stylize (vacío = ilimitado)</label>
-                        <input type="number" class="form-control" id="create-stylize" min="0" placeholder="Ilimitado">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Máximo sesión (min)</label>
-                        <input type="number" class="form-control" id="create-session" min="0" placeholder="Ilimitado">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Puede estilizar</label>
-                        <label class="switch">
-                            <input type="checkbox" id="create-can-stylize">
-                            <span class="switch-slider"></span>
-                        </label>
-                    </div>
-                    <div class="form-group">
                         <label class="form-label">Activo</label>
                         <select class="form-control" id="create-active">
                             <option value="true" selected>Sí</option>
                             <option value="false">No</option>
                         </select>
+                    </div>
+                </div>
+                <div class="admin-section-divider"></div>
+                <div class="admin-form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Stylize</label>
+                        <div class="admin-row">
+                            <label class="switch">
+                                <input type="checkbox" id="create-can-stylize">
+                                <span class="switch-slider"></span>
+                            </label>
+                            <input type="number" class="form-control" id="create-stylize" min="0" placeholder="Ilimitado">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Minutos disponibles</label>
+                        <div class="admin-row">
+                            <input type="number" class="form-control" id="create-recording-minutes" min="0" placeholder="Ilimitado">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Reset cada X días</label>
+                        <div class="admin-row">
+                            <input type="number" class="form-control" id="create-recording-window" min="0" placeholder="Sin reset">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-actions">
@@ -299,15 +321,21 @@
                 return;
             }
 
-            const dailyScript = Number(overlay.querySelector('#create-script').value || 0);
             const dailyStylizeRaw = overlay.querySelector('#create-stylize').value.trim();
             const dailyStylize = dailyStylizeRaw === '' ? null : Number(dailyStylizeRaw);
-            const maxSessionRaw = overlay.querySelector('#create-session').value.trim();
-            const maxSession = maxSessionRaw === '' ? null : Number(maxSessionRaw);
+            const recordingMinutesRaw = overlay.querySelector('#create-recording-minutes').value.trim();
+            const recordingMinutes = recordingMinutesRaw === '' ? null : Number(recordingMinutesRaw);
+            const recordingWindowRaw = overlay.querySelector('#create-recording-window').value.trim();
+            const recordingWindowParsed = recordingWindowRaw === '' ? null : Number(recordingWindowRaw);
+            const recordingWindow = recordingWindowParsed && recordingWindowParsed > 0 ? recordingWindowParsed : null;
             const canStylize = overlay.querySelector('#create-can-stylize').checked;
             const isActive = overlay.querySelector('#create-active').value === 'true';
 
-            if (dailyScript < 0 || (dailyStylize !== null && dailyStylize < 0) || (maxSession !== null && maxSession < 0)) {
+            if (
+                (dailyStylize !== null && dailyStylize < 0)
+                || (recordingMinutes !== null && recordingMinutes < 0)
+                || (recordingWindowParsed !== null && recordingWindowParsed < 0)
+            ) {
                 showToast('Las cuotas no pueden ser negativas');
                 return;
             }
@@ -317,9 +345,9 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username,
-                    daily_script_quota: dailyScript,
                     daily_stylize_quota: dailyStylize,
-                    max_session_minutes: maxSession,
+                    recording_minutes_quota: recordingMinutes,
+                    recording_window_days: recordingWindow,
                     can_stylize_images: canStylize,
                     is_active: isActive
                 })
@@ -345,28 +373,33 @@
                 <h3>Editar usuario</h3>
                 <div class="admin-form-grid">
                     <div class="form-group">
-                        <label class="form-label">Cuota diaria guiones</label>
-                        <input type="number" class="form-control" id="edit-script" min="0" value="${user.daily_script_quota ?? 0}">
+                        <label class="form-label">Stylize</label>
+                        <div class="admin-row">
+                            <label class="switch">
+                                <input type="checkbox" id="edit-can-stylize" ${user.can_stylize_images ? 'checked' : ''}>
+                                <span class="switch-slider"></span>
+                            </label>
+                            <input type="number" class="form-control" id="edit-stylize" min="0" value="${user.daily_stylize_quota ?? ''}" placeholder="Ilimitado">
+                            <button class="btn btn-action btn-small" id="reset-stylize">Reset</button>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Cuota stylize (vacío = ilimitado)</label>
-                        <input type="number" class="form-control" id="edit-stylize" min="0" value="${user.daily_stylize_quota ?? ''}" placeholder="Ilimitado">
+                        <label class="form-label">Minutos disponibles</label>
+                        <div class="admin-row">
+                            <input type="number" class="form-control" id="edit-recording-minutes" min="0" value="${user.recording_minutes_quota ?? ''}" placeholder="Ilimitado">
+                            <button class="btn btn-action btn-small" id="reset-recording">Reset</button>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Máximo sesión (min)</label>
-                        <input type="number" class="form-control" id="edit-session" min="0" value="${user.max_session_minutes ?? ''}" placeholder="Ilimitado">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Puede estilizar</label>
-                        <label class="switch">
-                            <input type="checkbox" id="edit-can-stylize" ${user.can_stylize_images ? 'checked' : ''}>
-                            <span class="switch-slider"></span>
-                        </label>
+                        <label class="form-label">Reset cada X días</label>
+                        <div class="admin-row">
+                            <input type="number" class="form-control" id="edit-recording-window" min="0" value="${user.recording_window_days ?? ''}" placeholder="Sin reset">
+                        </div>
                     </div>
                 </div>
-                <div class="admin-actions" style="margin-top: 16px;">
-                    <button class="btn btn-action" id="reset-script">Reset guiones</button>
-                    <button class="btn btn-action" id="reset-stylize">Reset stylize</button>
+                <div class="admin-section-divider"></div>
+                <div class="admin-actions">
+                    <button class="btn btn-action warning" id="reset-password">Reset contraseña</button>
                 </div>
                 <div class="modal-actions">
                     <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
@@ -395,28 +428,6 @@
         syncEditStylizeQuota();
         editStylizeToggle.addEventListener('change', syncEditStylizeQuota);
 
-        overlay.querySelector('#reset-script').addEventListener('click', () => {
-            confirmAction({
-                title: 'Resetear cuota de guiones',
-                message: `Esto reinicia el contador de guiones de ${user.username}.`,
-                confirmText: 'Resetear',
-                onConfirm: async () => {
-                    const res = await fetch(`/api/admin/user/${user.id}/quota`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ reset_script: true })
-                    });
-                    const data = await res.json();
-                    if (!data.ok) {
-                        showToast(data.error || 'Error al resetear guiones');
-                        return;
-                    }
-                    await reloadUsersTable();
-                    showToast('Cuota de guiones reseteada');
-                }
-            });
-        });
-
         overlay.querySelector('#reset-stylize').addEventListener('click', () => {
             confirmAction({
                 title: 'Resetear cuota de stylize',
@@ -439,15 +450,64 @@
             });
         });
 
+        overlay.querySelector('#reset-recording').addEventListener('click', () => {
+            confirmAction({
+                title: 'Resetear minutos de grabación',
+                message: `Esto reinicia el contador de minutos de ${user.username}.`,
+                confirmText: 'Resetear',
+                onConfirm: async () => {
+                    const res = await fetch(`/api/admin/user/${user.id}/quota`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reset_recording: true })
+                    });
+                    const data = await res.json();
+                    if (!data.ok) {
+                        showToast(data.error || 'Error al resetear minutos');
+                        return;
+                    }
+                    await reloadUsersTable();
+                    showToast('Minutos de grabación reseteados');
+                }
+            });
+        });
+
+        overlay.querySelector('#reset-password').addEventListener('click', () => {
+            confirmAction({
+                title: 'Resetear contraseña',
+                message: `Se generará una nueva contraseña temporal para ${user.username}.`,
+                confirmText: 'Resetear',
+                onConfirm: async () => {
+                    const res = await fetch(`/api/admin/user/${user.id}/reset-password`, {
+                        method: 'POST'
+                    });
+                    const data = await res.json();
+                    if (!data.ok) {
+                        showToast(data.error || 'Error al resetear contraseña');
+                        return;
+                    }
+                    overlay.remove();
+                    const message = `Nueva contraseña temporal para <strong>${user.username}</strong>. Entrega esta contraseña solo una vez.`;
+                    showTempPassword(user.username, data.temp_password, message);
+                }
+            });
+        });
+
         overlay.querySelector('#save-user').addEventListener('click', async () => {
-            const dailyScript = Number(overlay.querySelector('#edit-script').value || 0);
             const dailyStylizeRaw = overlay.querySelector('#edit-stylize').value.trim();
             const dailyStylize = dailyStylizeRaw === '' ? null : Number(dailyStylizeRaw);
-            const maxSessionRaw = overlay.querySelector('#edit-session').value.trim();
-            const maxSession = maxSessionRaw === '' ? null : Number(maxSessionRaw);
+            const recordingMinutesRaw = overlay.querySelector('#edit-recording-minutes').value.trim();
+            const recordingMinutes = recordingMinutesRaw === '' ? null : Number(recordingMinutesRaw);
+            const recordingWindowRaw = overlay.querySelector('#edit-recording-window').value.trim();
+            const recordingWindowParsed = recordingWindowRaw === '' ? null : Number(recordingWindowRaw);
+            const recordingWindow = recordingWindowParsed && recordingWindowParsed > 0 ? recordingWindowParsed : null;
             const canStylize = overlay.querySelector('#edit-can-stylize').checked;
 
-            if (dailyScript < 0 || (dailyStylize !== null && dailyStylize < 0) || (maxSession !== null && maxSession < 0)) {
+            if (
+                (dailyStylize !== null && dailyStylize < 0)
+                || (recordingMinutes !== null && recordingMinutes < 0)
+                || (recordingWindowParsed !== null && recordingWindowParsed < 0)
+            ) {
                 showToast('Las cuotas no pueden ser negativas');
                 return;
             }
@@ -456,9 +516,9 @@
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    daily_script_quota: dailyScript,
                     daily_stylize_quota: dailyStylize,
-                    max_session_minutes: maxSession,
+                    recording_minutes_quota: recordingMinutes,
+                    recording_window_days: recordingWindow,
                     can_stylize_images: canStylize
                 })
             });

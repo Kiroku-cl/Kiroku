@@ -222,6 +222,33 @@
     gap: 12px;
 }
 
+.admin-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-row .form-control {
+    flex: 1;
+}
+
+.admin-section-divider {
+    height: 1px;
+    background: var(--bg-surface-light);
+    margin: 16px 0;
+}
+
+.temp-password-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.temp-password-value {
+    font-family: 'SF Mono', 'Consolas', monospace;
+}
+
 .quota-stack {
     display: grid;
     gap: 6px;
@@ -446,6 +473,25 @@ input[type=number] {
     width: 100%;
     max-width: 480px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.modal-json-card {
+    max-width: 720px;
+}
+
+.json-pre {
+    background: rgba(8, 11, 16, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 16px;
+    max-height: 420px;
+    overflow: auto;
+    text-align: left;
+}
+
+.json-pre code {
+    font-size: 12px;
+    line-height: 1.6;
 }
 
 .modal-card h3 {

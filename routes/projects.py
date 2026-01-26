@@ -24,13 +24,21 @@ def project_start():
     participant_name = data.get("participant_name", "")
 
     try:
+        recording_quota = None
         if not current_user.is_admin:
-            ok, error = quotas.reserve_script_quota(
-                current_user.id,
-                reason="project_start"
-            )
-            if not ok:
-                return jsonify({"ok": False, "error": error}), 403
+            recording_quota = quotas.get_recording_quota(current_user.id)
+            if recording_quota and recording_quota["total_seconds"] is not None:
+                if recording_quota["remaining_seconds"] <= 0:
+                    reset_at = recording_quota.get("reset_at")
+                    return jsonify({
+                        "ok": False,
+                        "error": "No tienes minutos disponibles",
+                        "recording_remaining_seconds": 0,
+                        "recording_reset_at": (
+                            reset_at.isoformat() if reset_at else None
+                        ),
+                        "recording_window_days": recording_quota.get("window_days")
+                    }), 403
 
         project_id = project_store.create_project(
             current_user.id,
@@ -38,6 +46,12 @@ def project_start():
             participant_name,
             quota_reserved=not current_user.is_admin
         )
+        recording_limit_seconds = None
+        if recording_quota and recording_quota["total_seconds"] is not None:
+            recording_limit_seconds = recording_quota["remaining_seconds"]
+        project_store.update_state_fields(project_id, {
+            "recording_limit_seconds": recording_limit_seconds
+        })
         state = project_store.load_state(project_id) or {}
         db = Session()
         try:
@@ -62,10 +76,25 @@ def project_start():
             "project_id": project_id,
             "recording_started_at": state.get("recording_started_at"),
             "server_now": utcnow().isoformat(),
-            "max_session_minutes": current_user.max_session_minutes
+            "recording_total_seconds": (
+                recording_quota.get("total_seconds")
+                if recording_quota else None
+            ),
+            "recording_remaining_seconds": (
+                recording_quota.get("remaining_seconds")
+                if recording_quota else None
+            ),
+            "recording_reset_at": (
+                recording_quota.get("reset_at").isoformat()
+                if recording_quota and recording_quota.get("reset_at")
+                else None
+            ),
+            "recording_window_days": (
+                recording_quota.get("window_days")
+                if recording_quota else None
+            )
         })
     except Exception as e:
-        quotas.release_script_quota(current_user.id)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -94,18 +123,7 @@ def project_stop():
     if project_store.is_project_stopped(project_id):
         return jsonify({"ok": False, "error": "El proyecto ya fue detenido"}), 400
 
-    reserved_now = False
-
     try:
-        if not project_store.is_quota_reserved(project_id):
-            ok, error = quotas.reserve_script_quota(
-                current_user.id,
-                reason="project_stop"
-            )
-            if not ok:
-                return jsonify({"ok": False, "error": error}), 403
-            reserved_now = True
-
         if stylize_photos and not current_user.is_admin:
             if not current_user.can_stylize_images:
                 stylize_photos = False
@@ -121,12 +139,10 @@ def project_stop():
         q = queue.get_queue()
         rq_job = q.enqueue(job_processor.process_project, project_id)
 
-        if reserved_now:
-            project_store.set_quota_reserved(project_id, True)
-
         result_url = f"/r/{project_id}"
 
         started_at = state.get("recording_started_at")
+        recording_limit_seconds = state.get("recording_limit_seconds")
         if isinstance(started_at, str) and started_at:
             duration_seconds = None
             try:
@@ -135,6 +151,19 @@ def project_stop():
                 ).total_seconds()
             except (TypeError, ValueError):
                 duration_seconds = None
+
+            if (
+                duration_seconds is not None
+                and recording_limit_seconds is not None
+            ):
+                duration_seconds = min(
+                    duration_seconds,
+                    float(recording_limit_seconds)
+                )
+            if duration_seconds is not None:
+                project_store.update_state_fields(project_id, {
+                    "recording_duration_seconds": int(duration_seconds)
+                })
 
             db = Session()
             try:
@@ -165,12 +194,8 @@ def project_stop():
             "stylize_applied": stylize_photos
         })
     except ValueError as e:
-        if reserved_now:
-            quotas.release_script_quota(current_user.id)
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
-        if reserved_now:
-            quotas.release_script_quota(current_user.id)
         if project_store.project_exists(project_id):
             project_store.update_project_status(
                 project_id,

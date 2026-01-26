@@ -5,6 +5,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 {% endblock %}
 
 {% block content %}
@@ -40,14 +41,29 @@
 </div>
 
 <div class="toast-container" id="toast-container"></div>
+
+<div id="audit-detail-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-json-card">
+        <h3>Detalles</h3>
+        <pre class="json-pre"><code id="audit-detail-code" class="language-json"></code></pre>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" id="audit-detail-close">Cerrar</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
     const auditBody = document.querySelector('#audit-table tbody');
     let auditTable = null;
+    const detailsMap = new Map();
+    const detailModal = document.getElementById('audit-detail-modal');
+    const detailCode = document.getElementById('audit-detail-code');
+    const detailClose = document.getElementById('audit-detail-close');
 
     function showToast(message) {
         const container = document.getElementById('toast-container');
@@ -69,17 +85,21 @@
     }
 
     function renderLogs(logs) {
+        detailsMap.clear();
         const rowsHtml = logs.map(entry => {
             const actor = entry.actor_username || entry.actor_user_id || '-';
             const target = entry.target_username || entry.target_user_id || '-';
-            const details = entry.details ? JSON.stringify(entry.details) : '-';
+            const detailsId = entry.id || `${entry.created_at}-${entry.action}`;
+            detailsMap.set(String(detailsId), entry.details || null);
             return `
                 <tr>
                     <td>${formatDate(entry.created_at)}</td>
                     <td>${entry.action}</td>
                     <td>${actor}</td>
                     <td>${target}</td>
-                    <td>${details}</td>
+                    <td>
+                        <button class="btn btn-action btn-small" data-detail-id="${detailsId}">Detalle</button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -104,6 +124,29 @@
                 paginate: { previous: 'Anterior', next: 'Siguiente' }
             }
         });
+    }
+
+    function openDetailModal(details) {
+        if (!detailModal || !detailCode) return;
+        if (!details) {
+            detailCode.className = '';
+            detailCode.textContent = 'Sin detalle';
+        } else {
+            const pretty = JSON.stringify(details, null, 2);
+            detailCode.textContent = pretty;
+            if (window.hljs) {
+                detailCode.className = 'language-json';
+                detailCode.removeAttribute('data-highlighted');
+                window.hljs.highlightElement(detailCode);
+            }
+        }
+        detailModal.style.display = 'flex';
+    }
+
+    function closeDetailModal() {
+        if (!detailModal || !detailCode) return;
+        detailModal.style.display = 'none';
+        detailCode.textContent = '';
     }
 
     async function loadLogs() {
@@ -171,6 +214,25 @@
         overlay.querySelector('#confirm-apply').addEventListener('click', async () => {
             await onConfirm();
             overlay.remove();
+        });
+    }
+
+    document.addEventListener('click', (event) => {
+        const detailBtn = event.target.closest('[data-detail-id]');
+        if (!detailBtn) return;
+        const detailId = detailBtn.getAttribute('data-detail-id');
+        const details = detailsMap.get(String(detailId));
+        openDetailModal(details);
+    });
+
+    if (detailClose) {
+        detailClose.addEventListener('click', closeDetailModal);
+    }
+    if (detailModal) {
+        detailModal.addEventListener('click', (event) => {
+            if (event.target === detailModal) {
+                closeDetailModal();
+            }
         });
     }
 

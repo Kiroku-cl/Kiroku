@@ -138,6 +138,14 @@ def process_project(project_id):
             llm_total_tokens=llm_total_tokens
         )
 
+        if user_id:
+            duration_seconds = state.get("recording_duration_seconds")
+            if duration_seconds:
+                quotas.consume_recording_seconds(
+                    user_id,
+                    int(duration_seconds)
+                )
+
         log.info(f"Proyecto {project_id} completado exitosamente")
     except Exception as e:
         log.error(f"Proyecto {project_id} falló: {e}")

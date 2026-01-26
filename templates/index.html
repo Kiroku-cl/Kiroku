@@ -43,7 +43,7 @@
             </div>
             <div class="status-bar">
                 <span id="status" class="status">Detenido</span>
-                <span id="timer" class="timer">00:00</span>
+                <span id="timer" class="timer" title="Grabado - restante">00:00</span>
             </div>
         </header>
 
@@ -146,6 +146,21 @@
                 <button id="modal-continue" class="modal-btn modal-btn-secondary">
                     <i class="bi bi-play-circle"></i>
                     Continuar grabando
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal sin minutos -->
+    <div id="no-minutes-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h2 id="no-minutes-title">Sin minutos disponibles</h2>
+            <p class="modal-subtitle" id="no-minutes-subtitle">Te quedaste sin minutos de grabación.</p>
+            <div class="modal-countdown" id="no-minutes-countdown"></div>
+            <div class="modal-actions">
+                <button id="no-minutes-close" class="modal-btn modal-btn-secondary">
+                    <i class="bi bi-x-circle"></i>
+                    Cerrar
                 </button>
             </div>
         </div>

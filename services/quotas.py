@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from datetime import timedelta
+
 from extensions import Session
 from logger import get_logger
 from models import User, utcnow
@@ -9,6 +11,7 @@ log = get_logger("quota")
 
 
 WINDOW_HOURS = 24
+SECONDS_PER_MINUTE = 60
 
 
 def _reset_window(user, started_attr, used_attr, now):
@@ -20,23 +23,91 @@ def _reset_window(user, started_attr, used_attr, now):
     return False
 
 
-def reserve_script_quota(user_id, reason=""):
-    return _reserve_quota(
-        user_id,
-        quota_attr="daily_script_quota",
-        used_attr="scripts_used_in_window",
-        started_attr="quota_window_started_at",
-        label="guiones",
-        reason=reason
-    )
+def get_recording_quota(user_id):
+    db = Session()
+    try:
+        user = db.query(User).filter_by(id=user_id).first()
+        if not user:
+            return None
+
+        if user.is_admin:
+            return {
+                "total_seconds": None,
+                "used_seconds": 0,
+                "remaining_seconds": None,
+                "window_days": None,
+                "reset_at": None
+            }
+
+        quota_minutes = user.recording_minutes_quota
+        if quota_minutes is None:
+            return {
+                "total_seconds": None,
+                "used_seconds": 0,
+                "remaining_seconds": None,
+                "window_days": user.recording_window_days,
+                "reset_at": None
+            }
+
+        try:
+            quota_minutes = int(quota_minutes)
+        except (TypeError, ValueError):
+            quota_minutes = 0
+
+        total_seconds = max(0, quota_minutes) * SECONDS_PER_MINUTE
+        used_seconds = int(user.recording_seconds_used or 0)
+
+        now = utcnow()
+        window_days = user.recording_window_days
+        reset_at = None
+        if window_days:
+            started_at = user.recording_window_started_at
+            if not started_at or now - started_at >= timedelta(days=window_days):
+                user.recording_window_started_at = now
+                user.recording_seconds_used = 0
+                used_seconds = 0
+                db.commit()
+                started_at = now
+            reset_at = started_at + timedelta(days=window_days)
+
+        remaining_seconds = max(0, total_seconds - used_seconds)
+        return {
+            "total_seconds": total_seconds,
+            "used_seconds": used_seconds,
+            "remaining_seconds": remaining_seconds,
+            "window_days": window_days,
+            "reset_at": reset_at
+        }
+    finally:
+        Session.remove()
 
 
-def release_script_quota(user_id):
-    _release_quota(
-        user_id,
-        quota_attr="daily_script_quota",
-        used_attr="scripts_used_in_window"
-    )
+def consume_recording_seconds(user_id, seconds):
+    if seconds <= 0:
+        return
+
+    db = Session()
+    try:
+        user = db.query(User).filter_by(id=user_id).first()
+        if not user or user.is_admin:
+            return
+
+        if user.recording_minutes_quota is None:
+            return
+
+        now = utcnow()
+        window_days = user.recording_window_days
+        if window_days:
+            started_at = user.recording_window_started_at
+            if not started_at or now - started_at >= timedelta(days=window_days):
+                user.recording_window_started_at = now
+                user.recording_seconds_used = 0
+
+        current_used = int(user.recording_seconds_used or 0)
+        user.recording_seconds_used = current_used + int(seconds)
+        db.commit()
+    finally:
+        Session.remove()
 
 
 def reserve_stylize_quota(user_id, reason=""):

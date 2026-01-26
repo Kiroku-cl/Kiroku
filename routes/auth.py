@@ -132,7 +132,6 @@ def api_login():
         )
         db.add(user_session)
 
-        # Actualizar ultimo login
         user.last_login_at = datetime.now(timezone.utc)
 
         log_audit(

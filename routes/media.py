@@ -52,15 +52,11 @@ def audio_chunk():
     if project_store.is_project_stopped(project_id):
         return jsonify({"ok": False, "error": "El proyecto está detenido"}), 403
 
-    if not current_user.is_admin and current_user.max_session_minutes:
-        if project_store.is_recording_time_exceeded(
-            project_id,
-            current_user.max_session_minutes
-        ):
-            return jsonify({
-                "ok": False,
-                "error": "Tiempo máximo de grabación alcanzado"
-            }), 403
+    if project_store.is_recording_limit_exceeded(project_id):
+        return jsonify({
+            "ok": False,
+            "error": "Tiempo de grabación agotado"
+        }), 403
 
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "archivo requerido"}), 400
@@ -143,15 +139,11 @@ def upload_photo():
     if project_store.is_project_stopped(project_id):
         return jsonify({"ok": False, "error": "El proyecto está detenido"}), 403
 
-    if not current_user.is_admin and current_user.max_session_minutes:
-        if project_store.is_recording_time_exceeded(
-            project_id,
-            current_user.max_session_minutes
-        ):
-            return jsonify({
-                "ok": False,
-                "error": "Tiempo máximo de grabación alcanzado"
-            }), 403
+    if project_store.is_recording_limit_exceeded(project_id):
+        return jsonify({
+            "ok": False,
+            "error": "Tiempo de grabación agotado"
+        }), 403
 
     if not is_valid_uuid(photo_id):
         return jsonify({"ok": False, "error": "photo_id inválido"}), 400

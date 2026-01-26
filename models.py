@@ -36,17 +36,17 @@ class User(Base, UserMixin):
     must_change_password = Column(Boolean, default=False, nullable=False)
 
     can_stylize_images = Column(Boolean, default=False, nullable=False)
-    daily_script_quota = Column(Integer, default=10, nullable=False)
-    scripts_used_in_window = Column(Integer, default=0, nullable=False)
-    quota_window_started_at = Column(
-        DateTime(timezone=True), nullable=True
-    )
     daily_stylize_quota = Column(Integer, nullable=True)
     stylizes_used_in_window = Column(Integer, default=0, nullable=False)
     stylize_window_started_at = Column(
         DateTime(timezone=True), nullable=True
     )
-    max_session_minutes = Column(Integer, nullable=True)
+    recording_minutes_quota = Column(Integer, nullable=True)
+    recording_seconds_used = Column(Integer, default=0, nullable=False)
+    recording_window_days = Column(Integer, nullable=True)
+    recording_window_started_at = Column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Timestamps
     created_at = Column(

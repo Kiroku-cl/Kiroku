@@ -69,8 +69,7 @@ def register_cli(app):
                 is_admin=True,
                 is_active=True,
                 must_change_password=False,
-                can_stylize_images=True,
-                daily_script_quota=100
+                can_stylize_images=True
             )
             user.set_password(password)
 
