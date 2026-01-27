@@ -80,20 +80,22 @@ export function useTimers({ limitSeconds = null, onLimitReached = null } = {}) {
   const formatTimer = useCallback(() => {
     const limit = limitSecondsRef.current;
 
-    // Si hay límite, mostrar countdown (tiempo restante)
+    // Helper para formatear tiempo
+    const formatTime = (secs) => {
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = Math.floor(secs % 60);
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    };
+
+    // Si hay límite, mostrar GRABADO - RESTANTE
     if (limit !== null && limit > 0) {
       const remaining = Math.max(0, limit - elapsedSeconds);
-      const hours = Math.floor(remaining / 3600);
-      const minutes = Math.floor((remaining % 3600) / 60);
-      const seconds = Math.floor(remaining % 60);
-      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+      return `${formatTime(elapsedSeconds)} - ${formatTime(remaining)}`;
     }
 
-    // Sin límite, mostrar tiempo transcurrido
-    const hours = Math.floor(elapsedSeconds / 3600);
-    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-    const seconds = Math.floor(elapsedSeconds % 60);
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    // Sin límite, mostrar solo tiempo transcurrido
+    return formatTime(elapsedSeconds);
   }, [elapsedSeconds]);
 
   const getRemainingSeconds = useCallback(() => {

@@ -208,6 +208,11 @@ export function useRecorderEngine({
     }
     recorderRef.current = null;
 
+    // Si no hay flush (descartando), no esperar chunks pendientes
+    if (!flush) {
+      return;
+    }
+
     // Esperar a que todos los chunks pendientes se envíen
     return new Promise((resolve) => {
       const check = () => {

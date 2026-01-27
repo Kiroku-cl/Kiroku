@@ -21,6 +21,7 @@ import NoMinutesModal from "./NoMinutesModal";
 import ProcessingModal from "./ProcessingModal";
 import DiscardedModal from "./DiscardedModal";
 import QuotaReachedModal from "./QuotaReachedModal";
+import PausingModal from "./PausingModal";
 import { useRecorder } from "@/hooks/recording/useRecorder";
 import VideoCanvas from "./VideoCanvas";
 
@@ -124,14 +125,10 @@ export default function RecorderShell() {
               onCapturePhoto={recorder.capturePhoto}
               captureDisabled={!recorder.canCapturePhoto}
               onSwitchCamera={recorder.switchCamera}
-              showMobileTimer={recorder.showPreview}
-              mobileTimerLabel={recorder.timerLabel}
               participantName={recorder.participantName}
               onParticipantNameChange={recorder.setParticipantName}
               status={recorder.status}
               onOpenSettings={recorder.toggleSettings}
-              projectName={recorder.projectName}
-              onProjectNameChange={recorder.setProjectName}
               statusLabel={recorder.statusLabel}
             />
 
@@ -142,6 +139,9 @@ export default function RecorderShell() {
                 onStop={recorder.requestStop}
                 onPause={recorder.pause}
                 onResume={recorder.resume}
+                projectName={recorder.projectName}
+                onProjectNameChange={recorder.setProjectName}
+                timerLabel={recorder.timerLabel}
               />
             </div>
           </section>
@@ -171,6 +171,14 @@ export default function RecorderShell() {
       />
 
       <ProcessingModal open={recorder.showProcessingModal} />
+
+      <PausingModal open={recorder.isPausing} />
+
+      <PausingModal 
+        open={recorder.isResuming} 
+        title="Reanudando..." 
+        subtitle="Espere un momento" 
+      />
 
       <DiscardedModal
         open={recorder.showDiscardedModal}
@@ -211,6 +219,34 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
 
   const isRecording = recorder.status === "recording";
   const isPaused = recorder.status === "paused";
+  const isStopped = recorder.status === "stopped";
+
+  // Fullscreen helpers
+  const enterFullscreen = useCallback(() => {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().catch(() => {});
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    }
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    }
+  }, []);
+
+  // Salir de fullscreen cuando se detiene la grabación
+  useEffect(() => {
+    if (isStopped) {
+      exitFullscreen();
+    }
+  }, [isStopped, exitFullscreen]);
 
   useEffect(() => {
     return () => {
@@ -237,6 +273,8 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
       setTimeout(() => triggerFlash(setNameFlash), 100);
       return;
     }
+    // Entrar en fullscreen al iniciar
+    enterFullscreen();
     recorder.start();
   };
 
@@ -313,35 +351,33 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-1/2 bottom-24 -translate-x-1/2">
+      <div className="pointer-events-none absolute left-1/2 bottom-36 -translate-x-1/2">
         <div className="text-sm font-semibold text-text-muted">
           {recorder.timerLabel}
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 px-4 pb-6 pt-4">
-        <div className="grid grid-cols-3 items-center gap-3">
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-8 pt-4">
+        <div className="grid grid-cols-3 items-center gap-4">
           <div className="flex justify-start">
             {isRecording ? (
               <button
                 type="button"
                 onClick={recorder.pause}
-                className="inline-flex h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-semibold text-white"
+                className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-white"
               >
-                <PauseIcon className="h-5 w-5" />
-                Pausa
+                <PauseIcon className="h-7 w-7" />
               </button>
             ) : isPaused ? (
               <button
                 type="button"
                 onClick={recorder.resume}
-                className="inline-flex h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-semibold text-white"
+                className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/10 text-white"
               >
-                <PlayIcon className="h-5 w-5" />
-                Continuar
+                <PlayIcon className="h-7 w-7" />
               </button>
             ) : (
-              <div className="h-12" />
+              <div className="h-16 w-16" />
             )}
           </div>
 
@@ -349,12 +385,18 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
             <button
               type="button"
               onClick={isRecording || isPaused ? recorder.requestStop : handleStart}
-              className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-accent/40 transition"
+              disabled={recorder.isStarting}
+              className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-accent/40 transition disabled:opacity-70"
             >
-              {isRecording || isPaused ? (
-                <StopIcon className="h-7 w-7" />
+              {recorder.isStarting ? (
+                <svg className="h-9 w-9 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : isRecording || isPaused ? (
+                <StopIcon className="h-9 w-9" />
               ) : (
-                <PlayIcon className="h-7 w-7" />
+                <PlayIcon className="h-9 w-9" />
               )}
             </button>
           </div>
