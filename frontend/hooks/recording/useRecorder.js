@@ -362,6 +362,7 @@ export function useRecorder() {
     quotas.closeQuotaReached();
     // Mostrar modal de procesamiento
     setShowProcessingModal(true);
+    timers.pause();
 
     try {
       // Detener y enviar último chunk

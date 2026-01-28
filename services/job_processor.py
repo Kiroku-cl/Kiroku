@@ -15,6 +15,7 @@ from services.llm_service import (
     generate_script_with_usage,
     replace_markers_with_images
 )
+from services.stt_service import transcribe_wav
 from services.image_stylize import stylize_image
 from extensions import Session
 from models import log_audit
@@ -24,8 +25,6 @@ log = get_logger("job")
 
 def transcribe_chunk_worker(chunk_data):
     try:
-        from services.stt_whisper import transcribe_wav
-
         wav_path = chunk_data.get("wav_path")
         index = chunk_data.get("index", 0)
 

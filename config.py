@@ -17,8 +17,8 @@ def _build_database_url():
 
 
 class Config:
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
     DATABASE_URL = _build_database_url()
 
@@ -36,8 +36,10 @@ class Config:
     DATA_DIR = os.getenv("DATA_DIR", "data")
     RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "90"))
 
-    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
-    WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "es")
+    TRANSCRIPTION_MODEL= os.getenv(
+        "TRANSCRIPTION_MODEL",
+        "gpt-4o-mini-transcribe"
+    )
     CHUNK_DURATION = int(os.getenv("CHUNK_DURATION", "5"))
 
     _CPU_COUNT = max(1, os.cpu_count() or 1)
@@ -50,6 +52,7 @@ class Config:
         int(os.getenv("STYLIZE_PARALLEL_WORKERS", "4")),
         _CPU_COUNT
     )
+
     TRANSCRIBE_CHUNK_TIMEOUT = int(os.getenv("TRANSCRIBE_CHUNK_TIMEOUT", "30"))
     STYLIZE_PHOTO_TIMEOUT = int(os.getenv("STYLIZE_PHOTO_TIMEOUT", "60"))
 
