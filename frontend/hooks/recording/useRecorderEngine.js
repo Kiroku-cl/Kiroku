@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 const MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -9,31 +9,51 @@ const MIME_TYPES = [
 export function useRecorderEngine({
   getAudioStream,
   chunkDuration,
-  onChunkText,
-  onChunkIndex,
+  audioWsPath,
   onQuotaExceeded
 }) {
-  const [pendingChunks, setPendingChunks] = useState(0);
-  const pendingChunksRef = useRef(0);
   const recorderRef = useRef(null);
+  const audioStreamRef = useRef(null);
+  const releaseStreamOnStopRef = useRef(true);
+  const wsRef = useRef(null);
+  const wsReadyRef = useRef(null);
   const projectIdRef = useRef(null);
-  const chunkIndexRef = useRef(0);
-  const isRecordingRef = useRef(false);
+  const seqRef = useRef(0);
+  const chunkCursorRef = useRef(0);
+  const recordingStartRef = useRef(0);
+  const pausedAccumRef = useRef(0);
+  const pausedStartedAtRef = useRef(null);
+  const pendingChunksRef = useRef(0);
+  const [pendingChunks, setPendingChunks] = useState(0);
   const quotaExceededRef = useRef(false);
-  const intervalRef = useRef(null);
-  const chunkTimeoutRef = useRef(null);
-  const forceStopPromiseRef = useRef(null);
+
+  const wsUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const explicit = process.env.NEXT_PUBLIC_AUDIO_WS_URL;
+    if (explicit) {
+      const base = explicit.endsWith("/") ? explicit.slice(0, -1) : explicit;
+      return `${base}${audioWsPath}`;
+    }
+    const { protocol, host } = window.location;
+    const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProtocol}//${host}${audioWsPath}`;
+  }, [audioWsPath]);
 
   const findMimeType = useCallback(() => {
     for (const type of MIME_TYPES) {
-      if (MediaRecorder.isTypeSupported(type)) {
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) {
         return type;
       }
     }
     return null;
   }, []);
 
-  const waitForPendingChunks = useCallback((timeoutMs = 10000) => {
+  const updatePendingChunks = useCallback((delta) => {
+    pendingChunksRef.current = Math.max(0, pendingChunksRef.current + delta);
+    setPendingChunks(pendingChunksRef.current);
+  }, []);
+
+  const waitForPendingChunks = useCallback((timeoutMs = 15000) => {
     return new Promise((resolve) => {
       const startedAt = Date.now();
       const tick = () => {
@@ -51,273 +71,281 @@ export function useRecorderEngine({
     });
   }, []);
 
-  const sendChunk = useCallback(
-    async (blob, index, projectId) => {
-      if (quotaExceededRef.current) return false;
-      if (!projectId) {
-        console.warn("sendChunk: projectId is null");
-        return false;
-      }
-
-      const formData = new FormData();
-      formData.append("project_id", projectId);
-      formData.append("chunk_index", String(index));
-      formData.append("file", blob, `chunk_${index}.webm`);
-
-      pendingChunksRef.current += 1;
-      setPendingChunks((prev) => prev + 1);
-
+  const closeWebSocket = useCallback(() => {
+    if (wsRef.current) {
       try {
-        const res = await fetch("/api/audio/chunk", {
-          method: "POST",
-          body: formData,
-          credentials: "include"
-        });
-        const data = await res.json();
-
-        if (res.status === 403 && data.error === "Tiempo de grabación agotado") {
-          quotaExceededRef.current = true;
-          onQuotaExceeded?.();
-          return false;
-        }
-
-        if (data.ok && data.text) {
-          onChunkText?.(data.text);
-        }
-        return data.ok;
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onclose = null;
+        wsRef.current.close();
       } catch (err) {
-        console.warn("sendChunk error:", err);
-        return false;
-      } finally {
-        pendingChunksRef.current = Math.max(0, pendingChunksRef.current - 1);
-        setPendingChunks((prev) => Math.max(0, prev - 1));
+        console.warn("WS close error", err);
       }
-    },
-    [onChunkText, onQuotaExceeded]
-  );
+      wsRef.current = null;
+      wsReadyRef.current = null;
+    }
+  }, []);
 
-  const recordOneChunk = useCallback(
-    (index, projectId) => {
-      if (!isRecordingRef.current || quotaExceededRef.current) return;
+  const resetTracking = useCallback(() => {
+    seqRef.current = 0;
+    chunkCursorRef.current = 0;
+    recordingStartRef.current = 0;
+    pausedAccumRef.current = 0;
+    pausedStartedAtRef.current = null;
+    pendingChunksRef.current = 0;
+    setPendingChunks(0);
+    quotaExceededRef.current = false;
+  }, []);
 
-      const audioStream = getAudioStream?.();
-      if (!audioStream || !audioStream.active) {
-        console.warn("recordOneChunk: audio stream not active");
-        return;
+  const handleServerMessage = useCallback((payload) => {
+    if (payload?.type === "error") {
+      const errorText = payload.error || "Error en ingestión";
+      if (errorText.includes("Tiempo de grabación agotado")) {
+        quotaExceededRef.current = true;
+        onQuotaExceeded?.();
       }
+      console.warn("Audio WS error", errorText);
+    }
+  }, [onQuotaExceeded]);
 
-      const audioTracks = audioStream.getAudioTracks();
-      if (audioTracks.length === 0 || audioTracks.some((t) => t.readyState !== "live")) {
-        console.warn("recordOneChunk: audio tracks not live");
-        return;
-      }
-
-      const mimeType = findMimeType();
-      if (!mimeType) {
-        console.warn("recordOneChunk: no supported mime type");
-        return;
-      }
-
-      const chunks = [];
-      const recorder = new MediaRecorder(audioStream, {
-        mimeType,
-        audioBitsPerSecond: 64000
-      });
-      recorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        if (chunks.length > 0) {
-          const blob = new Blob(chunks, { type: mimeType });
-          if (blob.size > 500) {
-            await sendChunk(blob, index, projectId);
-          }
-        }
-      };
-
-      recorder.start();
-      onChunkIndex?.(index + 1);
-
-      chunkTimeoutRef.current = setTimeout(() => {
-        if (recorder.state === "recording") {
-          recorder.stop();
-        }
-      }, chunkDuration * 1000);
-    },
-    [getAudioStream, chunkDuration, findMimeType, sendChunk, onChunkIndex]
-  );
-
-  const startNextChunk = useCallback(
-    (projectId) => {
-      if (!isRecordingRef.current || quotaExceededRef.current) {
-        return;
-      }
-
-      const nextIndex = chunkIndexRef.current;
-      chunkIndexRef.current += 1;
-      recordOneChunk(nextIndex, projectId);
-    },
-    [recordOneChunk]
-  );
-
-  const startChunkCycle = useCallback(
-    (startIndex = 0, projectId) => {
-      if (!projectId) {
-        console.error("startChunkCycle: projectId is required");
-        return;
-      }
-
-      const audioStream = getAudioStream?.();
-      if (!audioStream || !audioStream.active) {
-        console.error("startChunkCycle: audio stream not active");
-        return;
-      }
-
-      const mimeType = findMimeType();
-      if (!mimeType) {
-        console.error("startChunkCycle: no supported mime type");
-        return;
-      }
-
-      projectIdRef.current = projectId;
-      chunkIndexRef.current = startIndex;
-      isRecordingRef.current = true;
-      quotaExceededRef.current = false;
-
-      startNextChunk(projectId);
-      intervalRef.current = setInterval(
-        () => startNextChunk(projectId),
-        chunkDuration * 1000
-      );
-    },
-    [getAudioStream, chunkDuration, findMimeType, startNextChunk]
-  );
-
-  const forceStopCurrentChunk = useCallback(async () => {
-    if (!isRecordingRef.current) {
-      return Math.max(0, chunkIndexRef.current - 1);
+  const ensureWebSocket = useCallback((projectId) => {
+    if (!wsUrl) {
+      throw new Error("WebSocket no disponible");
+    }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return wsReadyRef.current || Promise.resolve();
     }
 
-    if (forceStopPromiseRef.current) {
-      return forceStopPromiseRef.current;
-    }
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    const readyPromise = new Promise((resolve, reject) => {
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: "init",
+          project_id: projectId,
+          chunk_ms: chunkDuration * 1000
+        }));
+        resolve();
+      };
+      ws.onerror = (event) => {
+        reject(event);
+      };
+    });
+    wsReadyRef.current = readyPromise;
 
-    const promise = (async () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleServerMessage(data);
+      } catch (err) {
+        // ignore invalid json
       }
+    };
 
-      if (chunkTimeoutRef.current) {
-        clearTimeout(chunkTimeoutRef.current);
-        chunkTimeoutRef.current = null;
-      }
-
-      const currentIndex = Math.max(0, chunkIndexRef.current - 1);
-      const recorder = recorderRef.current;
-
-      if (recorder && recorder.state === "recording") {
-        const flushPromise = new Promise((resolve) => {
-          const originalOnStop = recorder.onstop;
-          recorder.onstop = async (event) => {
-            if (originalOnStop) {
-              await originalOnStop(event);
-            }
-            resolve();
-          };
-        });
-
+    ws.onclose = () => {
+      if (recorderRef.current && recorderRef.current.state === "recording") {
         try {
-          recorder.requestData();
+          recorderRef.current.stop();
         } catch (err) {
-          // ignore
+          console.warn("Recorder stop error", err);
         }
-        recorder.stop();
-        await flushPromise;
       }
+    };
 
-      await waitForPendingChunks();
-      recorderRef.current = null;
-      forceStopPromiseRef.current = null;
-      return currentIndex;
-    })();
+    return readyPromise;
+  }, [chunkDuration, handleServerMessage, wsUrl]);
 
-    forceStopPromiseRef.current = promise;
-    return promise;
-  }, [waitForPendingChunks]);
-
-  const resumeAfterPhoto = useCallback((projectId) => {
-    const targetProjectId = projectId || projectIdRef.current;
-    if (!targetProjectId) {
+  const sendChunk = useCallback(async (blob) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
-
     if (quotaExceededRef.current) {
       return;
     }
 
-    isRecordingRef.current = true;
-    startNextChunk(targetProjectId);
-    intervalRef.current = setInterval(
-      () => startNextChunk(targetProjectId),
-      chunkDuration * 1000
-    );
-  }, [chunkDuration, startNextChunk]);
+    updatePendingChunks(1);
+    try {
+      await wsReadyRef.current;
+      const buffer = await blob.arrayBuffer();
+      const seq = seqRef.current++;
 
-  const stopChunkCycle = useCallback(async (flush = true) => {
-    isRecordingRef.current = false;
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    if (chunkTimeoutRef.current) {
-      clearTimeout(chunkTimeoutRef.current);
-      chunkTimeoutRef.current = null;
-    }
-
-    const recorder = recorderRef.current;
-    if (recorder && recorder.state === "recording") {
-      if (flush) {
-        try {
-          recorder.requestData();
-        } catch (err) {
-          // ignore
-        }
+      const now = performance.now();
+      if (!recordingStartRef.current) {
+        recordingStartRef.current = now;
       }
-      recorder.stop();
-    }
-    recorderRef.current = null;
+      if (pausedStartedAtRef.current) {
+        pausedAccumRef.current += now - pausedStartedAtRef.current;
+        pausedStartedAtRef.current = null;
+      }
+      const elapsedAudio = Math.max(0, Math.round(now - recordingStartRef.current - pausedAccumRef.current));
+      const startMs = chunkCursorRef.current;
+      let durationMs = Math.max(1, elapsedAudio - chunkCursorRef.current);
+      chunkCursorRef.current = elapsedAudio;
 
-    if (!flush) {
+      const meta = {
+        type: "chunk",
+        seq,
+        start_ms: startMs,
+        duration_ms: durationMs,
+        size: buffer.byteLength
+      };
+      wsRef.current.send(JSON.stringify(meta));
+      wsRef.current.send(buffer);
+    } catch (err) {
+      console.warn("sendChunk error", err);
+    } finally {
+      updatePendingChunks(-1);
+    }
+  }, [updatePendingChunks]);
+
+  const attachRecorder = useCallback(async (projectId, { resetTimeline }) => {
+    const audioStream = getAudioStream?.();
+    if (!audioStream || !audioStream.active) {
+      throw new Error("Audio stream no disponible");
+    }
+
+    audioStreamRef.current = audioStream;
+    const mimeType = findMimeType();
+    if (!mimeType) {
+      throw new Error("MediaRecorder no soportado");
+    }
+
+    if (resetTimeline) {
+      chunkCursorRef.current = 0;
+      recordingStartRef.current = performance.now();
+      pausedAccumRef.current = 0;
+      pausedStartedAtRef.current = null;
+    }
+
+    await ensureWebSocket(projectId);
+
+    const recorder = new MediaRecorder(audioStream, {
+      mimeType,
+      audioBitsPerSecond: 96000
+    });
+    recorderRef.current = recorder;
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        void sendChunk(event.data);
+      }
+    };
+    recorder.onstop = () => {
+      if (releaseStreamOnStopRef.current) {
+        audioStream.getTracks().forEach((track) => track.stop());
+        audioStreamRef.current = null;
+      }
+      releaseStreamOnStopRef.current = true;
+    };
+
+    const timeslice = Math.max(1, Number(chunkDuration) || 5) * 1000;
+    recorder.start(timeslice);
+  }, [chunkDuration, ensureWebSocket, findMimeType, getAudioStream, sendChunk]);
+
+  const startStream = useCallback(async (projectId, { reset = false } = {}) => {
+    if (!projectId) {
+      throw new Error("projectId requerido");
+    }
+    const isNewProject = reset || projectIdRef.current !== projectId;
+    if (isNewProject) {
+      resetTracking();
+      projectIdRef.current = projectId;
+    }
+    if (!recordingStartRef.current) {
+      recordingStartRef.current = performance.now();
+    }
+    if (pausedStartedAtRef.current) {
+      pausedAccumRef.current += performance.now() - pausedStartedAtRef.current;
+      pausedStartedAtRef.current = null;
+    }
+
+    await attachRecorder(projectId, { resetTimeline: isNewProject });
+  }, [attachRecorder, resetTracking]);
+
+  const flushRecorder = useCallback(async () => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording") {
       return;
     }
 
-    await waitForPendingChunks(15000);
-  }, [waitForPendingChunks]);
+    await new Promise((resolve) => {
+      const originalHandler = recorder.ondataavailable;
+      recorder.ondataavailable = (event) => {
+        recorder.ondataavailable = originalHandler;
+        if (originalHandler) {
+          originalHandler(event);
+        }
+        resolve();
+      };
+      try {
+        recorder.requestData();
+      } catch (err) {
+        recorder.ondataavailable = originalHandler;
+        resolve();
+      }
+    });
+  }, []);
+
+  const stopStream = useCallback(async ({ flush = true, finalize = false, expectResume = false } = {}) => {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      releaseStreamOnStopRef.current = !expectResume;
+      if (flush) {
+        await flushRecorder();
+      }
+      try {
+        recorder.stop();
+      } catch (err) {
+        console.warn("Recorder stop error", err);
+      }
+    }
+    recorderRef.current = null;
+    if (!expectResume) {
+      const stream = audioStreamRef.current;
+      stream?.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+
+    if (expectResume) {
+      pausedStartedAtRef.current = performance.now();
+    }
+
+    await waitForPendingChunks();
+
+    if (finalize && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: "complete" }));
+      } catch (err) {
+        console.warn("WS complete error", err);
+      }
+    }
+
+    if (!expectResume) {
+      closeWebSocket();
+    }
+
+    if (finalize) {
+      resetTracking();
+      projectIdRef.current = null;
+    }
+  }, [closeWebSocket, resetTracking, waitForPendingChunks]);
+
+  const reset = useCallback(() => {
+    closeWebSocket();
+    resetTracking();
+    projectIdRef.current = null;
+  }, [closeWebSocket, resetTracking]);
 
   const isQuotaExceeded = useCallback(() => quotaExceededRef.current, []);
-
-  const getCurrentChunkIndex = useCallback(() => {
-    return Math.max(0, chunkIndexRef.current - 1);
-  }, []);
 
   const getProjectId = useCallback(() => projectIdRef.current, []);
 
   return {
-    startChunkCycle,
-    stopChunkCycle,
-    forceStopCurrentChunk,
-    resumeAfterPhoto,
-    getCurrentChunkIndex,
-    getProjectId,
+    startStream,
+    stopStream,
+    reset,
     pendingChunks,
-    isQuotaExceeded
+    isQuotaExceeded,
+    getProjectId
   };
 }

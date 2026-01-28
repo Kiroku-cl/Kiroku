@@ -3,7 +3,8 @@ from flask_login import login_required, current_user
 
 from helpers import is_valid_uuid
 from extensions import limiter, LIMITS
-from services import project_store, job_processor, queue
+from services import project_store
+from services.jobs import orchestrator
 from datetime import datetime
 
 from extensions import Session
@@ -134,16 +135,19 @@ def project_stop():
             "stylize_photos": stylize_photos
         })
         state = project_store.mark_stopped(project_id) or {}
-        project_store.update_project_status(project_id, "queued")
-
-        q = queue.get_queue()
-        rq_job = q.enqueue(job_processor.process_project, project_id)
+        enqueue_job = orchestrator.enqueue_processing_pipeline(project_id)
 
         result_url = f"/r/{project_id}"
 
         started_at = state.get("recording_started_at")
         recording_limit_seconds = state.get("recording_limit_seconds")
-        if isinstance(started_at, str) and started_at:
+        ingest_duration_ms = (state.get("ingest") or {}).get("duration_ms")
+        if ingest_duration_ms:
+            duration_seconds = int(ingest_duration_ms / 1000)
+            project_store.update_state_fields(project_id, {
+                "recording_duration_seconds": duration_seconds
+            })
+        elif isinstance(started_at, str) and started_at:
             duration_seconds = None
             try:
                 duration_seconds = (
@@ -189,7 +193,7 @@ def project_stop():
         return jsonify({
             "ok": True,
             "project_id": project_id,
-            "queue_job_id": rq_job.id,
+            "queue_job_id": enqueue_job.id,
             "result_url": result_url,
             "stylize_applied": stylize_photos
         })
@@ -206,6 +210,7 @@ def project_stop():
 
 
 @projects_bp.route("/api/projects", methods=["GET"])
+@limiter.exempt
 @login_required
 def list_projects():
     limit = request.args.get("limit", "10")

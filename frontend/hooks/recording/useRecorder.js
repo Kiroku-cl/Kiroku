@@ -30,9 +30,8 @@ export function useRecorder() {
   const [isStarting, setIsStarting] = useState(false);
   const isPausingRef = useRef(false);
   const [orientation, setOrientation] = useState("portrait");
-  const [chunkIndex, setChunkIndex] = useState(0);
-  const chunkIndexRef = useRef(0);
   const [chunkDuration, setChunkDuration] = useState(5);
+  const [audioWsPath, setAudioWsPath] = useState("/ws/audio");
 
   const media = useMediaStreams();
   const quotas = useQuotas();
@@ -54,6 +53,17 @@ export function useRecorder() {
     return timers.elapsedSeconds * 1000;
   }, [timers.elapsedSeconds]);
 
+  const ensurePreviewStream = useCallback(async () => {
+    let currentStream = media.getStream?.();
+    if (!currentStream || !currentStream.active) {
+      currentStream = await media.startPreview();
+    }
+    if (videoRef.current && videoRef.current.srcObject !== currentStream) {
+      videoRef.current.srcObject = currentStream;
+    }
+    return currentStream;
+  }, [media]);
+
   const getAudioStream = useCallback(() => {
     const currentStream = media.getStream?.();
     if (!currentStream) return null;
@@ -65,11 +75,7 @@ export function useRecorder() {
   const engine = useRecorderEngine({
     getAudioStream,
     chunkDuration,
-    onChunkText: null,
-    onChunkIndex: (nextIndex) => {
-      chunkIndexRef.current = nextIndex;
-      setChunkIndex(nextIndex);
-    },
+    audioWsPath,
     onQuotaExceeded: handleQuotaExceeded
   });
 
@@ -78,8 +84,7 @@ export function useRecorder() {
     videoRef,
     stylize: stylizePhotos,
     onQuotaExceeded: handleQuotaExceeded,
-    getElapsedMs,
-    engine
+    getElapsedMs
   });
 
   // Mantener projectIdRef actualizada
@@ -159,6 +164,9 @@ export function useRecorder() {
       if (data.chunk_duration) {
         setChunkDuration(data.chunk_duration);
       }
+      if (data.audio_ws_path) {
+        setAudioWsPath(data.audio_ws_path);
+      }
     } catch (err) {
       // ignore
     }
@@ -230,13 +238,7 @@ export function useRecorder() {
     try {
       // Usar el stream existente del preview (ya incluye audio)
       // Si no hay stream, intentar iniciarlo
-      let stream = media.getStream?.();
-      if (!stream || !stream.active) {
-        stream = await media.startPreview();
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      await ensurePreviewStream();
       const res = await fetch("/api/project/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -257,16 +259,18 @@ export function useRecorder() {
       setProjectId(newProjectId);
       projectIdRef.current = newProjectId;
       quotas.updateFromStart(data);
-      setChunkIndex(0);
-      chunkIndexRef.current = 0;
       photos.setPhotos([]);
       photos.setQuotaExceeded(false);
       timers.start();
-      // Pasar projectId como argumento para evitar problema de closure
-      engine.startChunkCycle(0, newProjectId);
+      await engine.startStream(newProjectId, { reset: true });
       dispatch({ type: "START_SUCCESS" });
     } catch (err) {
       media.stop();
+      try {
+        await engine.stopStream({ flush: false, finalize: false });
+      } catch {
+        // ignore
+      }
       dispatch({ type: "START_FAILURE", error: err.message });
       const message = err?.name
         ? mediaErrorMessage(err, { needsAudio: true })
@@ -308,7 +312,7 @@ export function useRecorder() {
     setIsPausing(true);
     isPausingRef.current = true;
     try {
-      await engine.stopChunkCycle(true);
+      await engine.stopStream({ flush: true, finalize: false, expectResume: true });
     } finally {
       setIsPausing(false);
       isPausingRef.current = false;
@@ -340,18 +344,22 @@ export function useRecorder() {
       setIsResuming(false);
     }
     
+    await ensurePreviewStream();
     setShowStopModal(false);
     quotas.closeQuotaReached();
     timers.resume();
-    engine.startChunkCycle(chunkIndexRef.current || 0, projectIdRef.current);
+    await engine.startStream(projectIdRef.current, { reset: false });
     dispatch({ type: "RESUME" });
-  }, [state.status, timers, engine, quotas, dispatch]);
+  }, [state.status, timers, engine, quotas, dispatch, ensurePreviewStream]);
 
-  const requestStop = useCallback(() => {
+  const requestStop = useCallback(async () => {
+    if (state.status === "recording") {
+      await pause();
+    }
     if (state.status === "recording" || state.status === "paused") {
       setShowStopModal(true);
     }
-  }, [state.status]);
+  }, [state.status, pause]);
 
   const stop = useCallback(async () => {
     const currentProjectId = projectIdRef.current;
@@ -363,11 +371,9 @@ export function useRecorder() {
     // Mostrar modal de procesamiento
     setShowProcessingModal(true);
     timers.pause();
+    await engine.stopStream({ flush: true, finalize: true });
 
     try {
-      // Detener y enviar último chunk
-      await engine.stopChunkCycle(true);
-
       const res = await fetch("/api/project/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -388,6 +394,7 @@ export function useRecorder() {
         videoRef.current.srcObject = null;
       }
       timers.stop();
+      engine.reset();
       setProjectId(null);
       projectIdRef.current = null;
       setShowProcessingModal(false);
@@ -415,8 +422,7 @@ export function useRecorder() {
     quotas.closeQuotaReached();
 
     try {
-      // Detener sin enviar último chunk
-      await engine.stopChunkCycle(false);
+      await engine.stopStream({ flush: false, finalize: true });
 
       await fetch(`/api/project/${currentProjectId}`, {
         method: "DELETE",
@@ -428,6 +434,7 @@ export function useRecorder() {
         videoRef.current.srcObject = null;
       }
       timers.stop();
+      engine.reset();
       setProjectId(null);
       projectIdRef.current = null;
       dispatch({ type: "STOP_SUCCESS" });

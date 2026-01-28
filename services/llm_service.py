@@ -58,48 +58,6 @@ def generate_script_with_usage(transcript_with_markers, participant_name="ACTOR"
         return transcript_with_markers, None
 
 
-def insert_photo_markers(transcript, photos, chunks):
-    """
-    Inserta marcadores [[FOTO:<id>]] en la transcripción según el índice de chunk.
-
-    Cada foto incluye el campo after_chunk_index que indica después de qué chunk
-    debe insertarse. Los chunks y fotos se ordenan para mantener la secuencia de
-    la grabación.
-    """
-    if not photos:
-        return transcript
-
-    # Mapear fotos por índice de chunk
-    photos_by_chunk = {}
-    for photo in sorted(
-        photos,
-        key=lambda p: (p.get("after_chunk_index", -1), p.get("t_ms", 0))
-    ):
-        idx = photo.get("after_chunk_index")
-        if idx is None:
-            # Si no hay índice, agregar al final
-            idx = -1
-        photos_by_chunk.setdefault(idx, []).append(photo)
-
-    result_parts = []
-    sorted_chunks = sorted(chunks, key=lambda c: c.get("index", 0))
-
-    for chunk in sorted_chunks:
-        chunk_index = chunk.get("index", 0)
-        chunk_text = chunk.get("text", "")
-        if chunk_text:
-            result_parts.append(chunk_text)
-
-        for photo in photos_by_chunk.get(chunk_index, []):
-            result_parts.append(f" [[FOTO:{photo['photo_id']}]] ")
-
-    # Fotos que no tengan índice asociado se agregan al final
-    for photo in photos_by_chunk.get(-1, []):
-        result_parts.append(f" [[FOTO:{photo['photo_id']}]] ")
-
-    return " ".join(part for part in result_parts if part)
-
-
 def replace_markers_with_images(script, photos):
     """
     Reemplaza [[FOTO:<id>]] con sintaxis Markdown de imagen.

@@ -5,8 +5,7 @@ export function usePhotos({
   videoRef,
   stylize,
   onQuotaExceeded,
-  getElapsedMs,
-  engine
+  getElapsedMs
 }) {
   const [photos, setPhotos] = useState([]);
   const [photoDelay, setPhotoDelay] = useState(0);
@@ -24,16 +23,14 @@ export function usePhotos({
       return;
     }
 
-    const currentProjectId = projectId || engine?.getProjectId?.();
-    if (!currentProjectId || !videoRef.current || !engine?.forceStopCurrentChunk) {
+    const currentProjectId = projectId;
+    if (!currentProjectId || !videoRef.current) {
       return;
     }
 
     setIsCapturing(true);
     try {
-      const afterChunkIndex = await engine.forceStopCurrentChunk();
       const video = videoRef.current;
-      const projectForResume = engine.getProjectId?.() || currentProjectId;
 
       if (!canvasRef.current) {
         canvasRef.current = document.createElement("canvas");
@@ -76,8 +73,7 @@ export function usePhotos({
           project_id: currentProjectId,
           photo_id: photoId,
           t_ms: timestamp,
-          data_url: dataUrl,
-          after_chunk_index: afterChunkIndex
+          data_url: dataUrl
         })
       });
 
@@ -98,7 +94,6 @@ export function usePhotos({
           id: photoId,
           previewUrl: dataUrl,
           tMs: timestamp,
-          afterChunkIndex,
           stylize
         },
         ...prev
@@ -106,19 +101,12 @@ export function usePhotos({
       if (photoDelay > 0) {
         await new Promise((resolve) => setTimeout(resolve, photoDelay * 1000));
       }
-      if (!quotaExceededRef.current && projectForResume) {
-        engine.resumeAfterPhoto?.(projectForResume);
-      }
     } catch (err) {
       console.error("Error capturando foto:", err);
-      const projectForResume = engine.getProjectId?.() || projectId;
-      if (!quotaExceededRef.current && projectForResume) {
-        engine.resumeAfterPhoto?.(projectForResume);
-      }
     } finally {
       setIsCapturing(false);
     }
-  }, [engine, photoDelay, projectId, videoRef, getElapsedMs, onQuotaExceeded, stylize]);
+  }, [photoDelay, projectId, videoRef, getElapsedMs, onQuotaExceeded, stylize]);
 
   const capturePhoto = useCallback(() => {
     if (quotaExceededRef.current) {

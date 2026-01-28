@@ -16,5 +16,6 @@ def health():
 @login_required
 def get_config():
     return jsonify({
-        "chunk_duration": Config.CHUNK_DURATION
+        "chunk_duration": Config.AUDIO_CHUNK_SECONDS,
+        "audio_ws_path": Config.AUDIO_WS_PATH
     })
