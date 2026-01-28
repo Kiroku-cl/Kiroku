@@ -25,6 +25,10 @@ export function useRecorder() {
   const [showStopModal, setShowStopModal] = useState(false);
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [showDiscardedModal, setShowDiscardedModal] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const isPausingRef = useRef(false);
   const [orientation, setOrientation] = useState("portrait");
   const [chunkIndex, setChunkIndex] = useState(0);
   const chunkIndexRef = useRef(0);
@@ -215,6 +219,7 @@ export function useRecorder() {
       notify("Ingresa un nombre para el proyecto", "error");
       return;
     }
+    setIsStarting(true);
     dispatch({ type: "START_REQUEST" });
     try {
       // Usar el stream existente del preview (ya incluye audio)
@@ -261,6 +266,8 @@ export function useRecorder() {
         ? mediaErrorMessage(err, { needsAudio: true })
         : err?.message || "Error al iniciar. Verifica permisos de cámara/micrófono.";
       notify(message, "error");
+    } finally {
+      setIsStarting(false);
     }
   }, [participantName, projectName, dispatch, media, quotas, timers, engine, photos, notify]);
 
@@ -288,19 +295,45 @@ export function useRecorder() {
 
   const pause = useCallback(async () => {
     if (state.status !== "recording") return;
-    timers.pause();
-    // Enviar chunk actual al pausar, independiente del tamaño
-    await engine.stopChunkCycle(true);
+    // Cambiar estado inmediatamente para UI responsiva
     dispatch({ type: "PAUSE" });
+    timers.pause();
+    // Enviar chunk en segundo plano
+    setIsPausing(true);
+    isPausingRef.current = true;
+    try {
+      await engine.stopChunkCycle(true);
+    } finally {
+      setIsPausing(false);
+      isPausingRef.current = false;
+    }
   }, [state.status, timers, engine, dispatch]);
 
-  const resume = useCallback(() => {
+  const resume = useCallback(async () => {
     if (state.status !== "paused") return;
     // Si la cuota está excedida, no permitir reanudar
     if (engine.isQuotaExceeded()) {
       quotas.openQuotaReached();
       return;
     }
+    
+    // Si aún está pausando (enviando chunk), esperar
+    if (isPausingRef.current) {
+      setIsResuming(true);
+      // Esperar a que termine de enviar el chunk
+      await new Promise((resolve) => {
+        const checkPausing = () => {
+          if (!isPausingRef.current) {
+            resolve();
+          } else {
+            setTimeout(checkPausing, 100);
+          }
+        };
+        checkPausing();
+      });
+      setIsResuming(false);
+    }
+    
     setShowStopModal(false);
     quotas.closeQuotaReached();
     timers.resume();
@@ -444,6 +477,12 @@ export function useRecorder() {
     // Modal de descartado
     showDiscardedModal,
     closeDiscardedModal,
+    // Estado de pausa (enviando chunk)
+    isPausing,
+    // Estado de reanudando (esperando que termine pausa)
+    isResuming,
+    // Estado de iniciando (esperando servidor)
+    isStarting,
     // Modal sin minutos (al inicio)
     showNoMinutesModal: quotas.noMinutesOpen,
     noMinutesTitle: quotas.noMinutesTitle,

@@ -11,6 +11,7 @@ import {
 
 export default function StopModal({ open, onFinish, onDiscard, onContinue }) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   if (!open) return null;
 
@@ -18,9 +19,14 @@ export default function StopModal({ open, onFinish, onDiscard, onContinue }) {
     setConfirmingDiscard(true);
   };
 
-  const handleConfirmDiscard = () => {
-    setConfirmingDiscard(false);
-    onDiscard?.();
+  const handleConfirmDiscard = async () => {
+    setIsDiscarding(true);
+    try {
+      await onDiscard?.();
+    } finally {
+      setIsDiscarding(false);
+      setConfirmingDiscard(false);
+    }
   };
 
   const handleCancelDiscard = () => {
@@ -41,15 +47,29 @@ export default function StopModal({ open, onFinish, onDiscard, onContinue }) {
           </p>
           <div className="mt-6 flex flex-col gap-3">
             <button
-              className="flex items-center justify-center gap-2 rounded-lg bg-error px-4 py-3 text-sm font-semibold text-white hover:bg-error/90"
+              className="flex items-center justify-center gap-2 rounded-lg bg-error px-4 py-3 text-sm font-semibold text-white hover:bg-error/90 disabled:opacity-70"
               onClick={handleConfirmDiscard}
+              disabled={isDiscarding}
             >
-              <TrashIcon className="h-5 w-5" />
-              Sí, descartar grabación
+              {isDiscarding ? (
+                <>
+                  <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Espere un momento...
+                </>
+              ) : (
+                <>
+                  <TrashIcon className="h-5 w-5" />
+                  Sí, descartar grabación
+                </>
+              )}
             </button>
             <button
-              className="flex items-center justify-center gap-2 rounded-lg border border-bg-surface-light px-4 py-3 text-sm font-semibold text-text-secondary"
+              className="flex items-center justify-center gap-2 rounded-lg border border-bg-surface-light px-4 py-3 text-sm font-semibold text-text-secondary disabled:opacity-50"
               onClick={handleCancelDiscard}
+              disabled={isDiscarding}
             >
               <ArrowLeftIcon className="h-5 w-5" />
               No, volver

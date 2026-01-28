@@ -15,14 +15,10 @@ export default function Preview({
   onCapturePhoto,
   captureDisabled,
   onSwitchCamera,
-  showMobileTimer,
-  mobileTimerLabel,
   participantName,
   onParticipantNameChange,
   status,
   onOpenSettings,
-  projectName,
-  onProjectNameChange,
   statusLabel
 }) {
   const isEditable = status === "stopped";
@@ -98,18 +94,6 @@ export default function Preview({
         <ArrowPathIcon className="h-6 w-6" />
       </button>
 
-      {/* Nombre del proyecto - esquina superior izquierda */}
-      <div className="absolute left-4 top-4">
-        <input
-          value={projectName}
-          onChange={(e) => onProjectNameChange(e.target.value)}
-          placeholder="Sin título"
-          disabled={status !== "stopped"}
-          maxLength={50}
-          className="bg-transparent text-lg font-semibold text-white placeholder:text-white/50 focus:outline-none disabled:opacity-70"
-        />
-      </div>
-
       {/* Status y settings - esquina superior derecha */}
       <div className="absolute right-4 top-4 flex items-center gap-2">
         {statusLabel && (
@@ -129,11 +113,6 @@ export default function Preview({
         >
           <Cog6ToothIcon className="h-5 w-5" />
         </button>
-      </div>
-
-      {/* Timer - esquina inferior derecha */}
-      <div className="absolute bottom-4 right-4 text-2xl font-bold text-text-secondary drop-shadow-lg">
-        {mobileTimerLabel}
       </div>
 
       <div className="absolute bottom-4 left-20 lg:left-4">
