@@ -14,6 +14,7 @@ export function useRecorder() {
   const canvasRef = useRef(null);
   const [projectId, setProjectId] = useState(null);
   const projectIdRef = useRef(null);
+  const configLoadedRef = useRef(false);
   const [projectName, setProjectName] = useState("");
   const [participantName, setParticipantName] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -31,7 +32,24 @@ export function useRecorder() {
   const isPausingRef = useRef(false);
   const [orientation, setOrientation] = useState("portrait");
   const [chunkDuration, setChunkDuration] = useState(5);
+  const chunkDurationRef = useRef(5);
   const [audioWsPath, setAudioWsPath] = useState("/ws/audio");
+
+  const applyChunkDuration = useCallback((value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    if (parsed <= 0) return;
+    chunkDurationRef.current = parsed;
+    setChunkDuration(parsed);
+  }, []);
+
+  useEffect(() => {
+    chunkDurationRef.current = chunkDuration;
+  }, [chunkDuration]);
+
+  const getChunkDuration = useCallback(() => {
+    return Math.max(1, Number(chunkDurationRef.current) || 5);
+  }, []);
 
   const media = useMediaStreams();
   const quotas = useQuotas();
@@ -74,7 +92,7 @@ export function useRecorder() {
 
   const engine = useRecorderEngine({
     getAudioStream,
-    chunkDuration,
+    getChunkDuration,
     audioWsPath,
     onQuotaExceeded: handleQuotaExceeded
   });
@@ -160,17 +178,24 @@ export function useRecorder() {
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch("/api/config", { credentials: "include" });
-      const data = await res.json();
-      if (data.chunk_duration) {
-        setChunkDuration(data.chunk_duration);
+      if (!res.ok) {
+        return;
       }
+      const data = await res.json();
+      const durationValue =
+        data.chunk_duration_seconds ??
+        data.chunk_duration ??
+        (data.chunk_duration_ms ? data.chunk_duration_ms / 1000 : undefined);
+      applyChunkDuration(durationValue);
       if (data.audio_ws_path) {
         setAudioWsPath(data.audio_ws_path);
       }
     } catch (err) {
       // ignore
+    } finally {
+      configLoadedRef.current = true;
     }
-  }, []);
+  }, [applyChunkDuration, setAudioWsPath]);
 
   useEffect(() => {
     fetchConfig();
@@ -236,6 +261,9 @@ export function useRecorder() {
     setIsStarting(true);
     dispatch({ type: "START_REQUEST" });
     try {
+      if (!configLoadedRef.current) {
+        await fetchConfig();
+      }
       // Usar el stream existente del preview (ya incluye audio)
       // Si no hay stream, intentar iniciarlo
       await ensurePreviewStream();
@@ -279,7 +307,7 @@ export function useRecorder() {
     } finally {
       setIsStarting(false);
     }
-  }, [participantName, projectName, dispatch, media, quotas, timers, engine, photos, notify]);
+  }, [participantName, projectName, dispatch, media, quotas, timers, engine, photos, notify, fetchConfig]);
 
   useEffect(() => {
     if (previewInitRef.current) return;

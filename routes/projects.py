@@ -10,6 +10,7 @@ from datetime import datetime
 from extensions import Session
 from models import utcnow, log_audit_for_request
 from services import quotas
+from config import Config
 
 
 projects_bp = Blueprint('projects', __name__)
@@ -77,6 +78,7 @@ def project_start():
             "project_id": project_id,
             "recording_started_at": state.get("recording_started_at"),
             "server_now": utcnow().isoformat(),
+            "chunk_duration_seconds": Config.AUDIO_CHUNK_SECONDS,
             "recording_total_seconds": (
                 recording_quota.get("total_seconds")
                 if recording_quota else None

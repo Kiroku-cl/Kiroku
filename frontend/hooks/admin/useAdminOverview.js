@@ -67,14 +67,14 @@ export function useAdminOverview() {
       };
       setProcessingChart({
         labels: data.labels || [],
-        totalTimes: data.total_times || [],
-        transcriptionTimes: data.transcription_times || [],
-        stylizeTimes: data.stylize_times || [],
+        pipelineTimes: data.pipeline_times || [],
+        segmentTimes: data.segment_times || [],
+        photoTimes: data.photo_times || [],
         dateInfo: data.date_info || null,
         averages: {
-          total: average(data.total_times || []),
-          transcription: average(data.transcription_times || []),
-          stylize: average(data.stylize_times || [])
+          pipeline: average(data.pipeline_times || []),
+          segment: average(data.segment_times || []),
+          photo: average(data.photo_times || [])
         }
       });
     } finally {

@@ -132,22 +132,22 @@ export default function OverviewPanel({ onToast }) {
         labels: processingChart.labels,
         datasets: [
           {
-            label: "Tiempo total (s)",
-            data: processingChart.totalTimes,
+            label: "Pipeline (s)",
+            data: processingChart.pipelineTimes,
             borderColor: "#6c5ce7",
             backgroundColor: "rgba(108, 92, 231, 0.2)",
             tension: 0.35
           },
           {
-            label: "Transcripción (s)",
-            data: processingChart.transcriptionTimes,
+            label: "Segmentos (s)",
+            data: processingChart.segmentTimes,
             borderColor: "#00b894",
             backgroundColor: "rgba(0, 184, 148, 0.2)",
             tension: 0.35
           },
           {
-            label: "Estilizado (s)",
-            data: processingChart.stylizeTimes,
+            label: "Fotos (s)",
+            data: processingChart.photoTimes,
             borderColor: "#ff7675",
             backgroundColor: "rgba(255, 118, 117, 0.2)",
             tension: 0.35
@@ -207,22 +207,23 @@ export default function OverviewPanel({ onToast }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-accent">Admin Overview</h1>
+        <h1 className="text-2xl font-semibold text-accent">Panel de Control</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: "Jobs en proceso", key: "jobs_processing", flavor: "warn" },
-          { label: "Jobs en error", key: "jobs_error", flavor: "error" },
-          { label: "Imágenes en proceso", key: "images_processing", flavor: "warn" }
+          { label: "Proyectos activos", key: "projects_active", flavor: "accent" },
+          { label: "Proyectos con error", key: "projects_error", flavor: "error" },
+          { label: "Segmentos pendientes", key: "segments_pending", flavor: "warn" },
+          { label: "Fotos pendientes", key: "photos_pending", flavor: "warn" }
         ].map((card) => (
           <div
             key={card.key}
             className={`rounded-2xl px-4 py-5 text-center border ${
-              card.flavor === "warn"
-                ? "border-yellow-500/40 bg-yellow-500/10"
-                : card.flavor === "error"
-                  ? "border-error/40 bg-error/10"
+              card.flavor === "error"
+                ? "border-error/40 bg-error/10"
+                : card.flavor === "warn"
+                  ? "border-amber-500/40 bg-amber-500/10"
                   : "border-accent/40 bg-accent/10"
             }`}
           >
@@ -267,9 +268,9 @@ export default function OverviewPanel({ onToast }) {
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          { label: "Tiempo medio transcripción", key: "transcription" },
-          { label: "Tiempo medio estilizado", key: "stylize" },
-          { label: "Tiempo medio total", key: "total" }
+          { label: "Pipeline", key: "pipeline" },
+          { label: "Segmentos", key: "segment" },
+          { label: "Fotos", key: "photo" }
         ].map((card) => (
           <div
             key={card.key}

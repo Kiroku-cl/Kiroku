@@ -113,6 +113,7 @@ def create_project(
         "created_at": recording_started_at,
         "recording_started_at": recording_started_at,
         "recording_limit_seconds": None,
+        "chunk_duration_seconds": Config.AUDIO_CHUNK_SECONDS,
         "expires_at": expires_at.isoformat(),
         "stopped_at": None,
         "quota_reserved": quota_reserved,

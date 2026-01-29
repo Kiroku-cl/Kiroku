@@ -95,35 +95,35 @@ def admin_overview():
             .count()
         )
 
-        jobs_processing = (
-            db.query(Project)
-            .filter(Project.status.in_(["queued", "processing"]))
-            .count()
-        )
-        jobs_error = db.query(Project).filter(Project.status == "error").count()
-
-        images_processing = 0
-        processing_projects = (
+        active_projects = (
             db.query(Project)
             .filter(Project.status.in_(["queued", "processing"]))
             .all()
         )
-        for project in processing_projects:
+        projects_error = db.query(Project).filter(Project.status == "error").count()
+
+        segments_pending = 0
+        photos_pending = 0
+        for project in active_projects:
             project_id = str(project.id)
             state = project_store.load_state(project_id) or {}
-            if not state.get("stylize_photos", True):
-                continue
-            photos = timeline.get_photos(project_id)
-            for photo in photos:
-                if not photo.get("stylized_path"):
-                    images_processing += 1
+            segments = state.get("segments") or {}
+            for segment in segments.values():
+                if segment.get("status") != "done":
+                    segments_pending += 1
+            if state.get("stylize_photos", True):
+                photos = timeline.get_photos(project_id)
+                for photo in photos:
+                    if not photo.get("stylized_path"):
+                        photos_pending += 1
 
         return jsonify({
             "ok": True,
             "stats": {
-                "jobs_processing": jobs_processing,
-                "jobs_error": jobs_error,
-                "images_processing": images_processing
+                "projects_active": len(active_projects),
+                "projects_error": projects_error,
+                "segments_pending": segments_pending,
+                "photos_pending": photos_pending
             }
         })
     finally:
@@ -241,9 +241,9 @@ def admin_processing_history():
             bucket["stylize"].append(metrics.get("avg_stylize_time", 0))
 
         labels = []
-        total_times = []
-        transcription_times = []
-        stylize_times = []
+        pipeline_times = []
+        segment_times = []
+        photo_times = []
 
         def _avg(values):
             return round(sum(values) / len(values), 2) if values else 0.0
@@ -254,9 +254,9 @@ def admin_processing_history():
             bucket = hourly_buckets[key]
 
             labels.append(key)
-            total_times.append(_avg(bucket["total"]))
-            transcription_times.append(_avg(bucket["transcription"]))
-            stylize_times.append(_avg(bucket["stylize"]))
+            pipeline_times.append(_avg(bucket["total"]))
+            segment_times.append(_avg(bucket["transcription"]))
+            photo_times.append(_avg(bucket["stylize"]))
 
         date_info = {
             "start": start.strftime("%Y-%m-%d %H:%M"),
@@ -267,9 +267,9 @@ def admin_processing_history():
         return jsonify({
             "ok": True,
             "labels": labels,
-            "total_times": total_times,
-            "transcription_times": transcription_times,
-            "stylize_times": stylize_times,
+            "pipeline_times": pipeline_times,
+            "segment_times": segment_times,
+            "photo_times": photo_times,
             "date_info": date_info
         })
     finally:

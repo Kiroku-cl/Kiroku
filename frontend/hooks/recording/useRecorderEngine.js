@@ -8,7 +8,7 @@ const MIME_TYPES = [
 
 export function useRecorderEngine({
   getAudioStream,
-  chunkDuration,
+  getChunkDuration,
   audioWsPath,
   onQuotaExceeded
 }) {
@@ -121,10 +121,11 @@ export function useRecorderEngine({
     wsRef.current = ws;
     const readyPromise = new Promise((resolve, reject) => {
       ws.onopen = () => {
+        const chunkMs = Math.max(1, Number(getChunkDuration?.() || 5)) * 1000;
         ws.send(JSON.stringify({
           type: "init",
           project_id: projectId,
-          chunk_ms: chunkDuration * 1000
+          chunk_ms: chunkMs
         }));
         resolve();
       };
@@ -154,7 +155,7 @@ export function useRecorderEngine({
     };
 
     return readyPromise;
-  }, [chunkDuration, handleServerMessage, wsUrl]);
+  }, [getChunkDuration, handleServerMessage, wsUrl]);
 
   const sendChunk = useCallback(async (blob) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -238,9 +239,9 @@ export function useRecorderEngine({
       releaseStreamOnStopRef.current = true;
     };
 
-    const timeslice = Math.max(1, Number(chunkDuration) || 5) * 1000;
+    const timeslice = Math.max(1, Number(getChunkDuration?.() || 5)) * 1000;
     recorder.start(timeslice);
-  }, [chunkDuration, ensureWebSocket, findMimeType, getAudioStream, sendChunk]);
+  }, [getChunkDuration, ensureWebSocket, findMimeType, getAudioStream, sendChunk]);
 
   const startStream = useCallback(async (projectId, { reset = false } = {}) => {
     if (!projectId) {
