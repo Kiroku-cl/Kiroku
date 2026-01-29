@@ -483,11 +483,15 @@ export function useRecorder() {
   }, []);
 
   const capturePhoto = useCallback(() => {
-    if (!showPreview) return;
     photos.capturePhoto();
-  }, [photos, showPreview]);
+  }, [photos]);
 
-  const canCapturePhoto = showPreview && !photos.isCapturing && state.status === "recording";
+  const canCapturePhoto = (
+    showPreview &&
+    !photos.isCapturing &&
+    !photos.countdownActive &&
+    state.status === "recording"
+  );
 
   const switchCamera = useCallback(async () => {
     try {
@@ -546,6 +550,9 @@ export function useRecorder() {
     photoDelay: photos.photoDelay,
     decreaseDelay: () => photos.setPhotoDelay(Math.max(0, photos.photoDelay - 1)),
     increaseDelay: () => photos.setPhotoDelay(photos.photoDelay + 1),
+    photoCountdownActive: photos.countdownActive,
+    photoCountdownValue: photos.countdownValue,
+    photoFlashKey: photos.flashKey,
     stylizePhotos,
     toggleStylize: () => setStylizePhotos((prev) => !prev),
     // Video/Preview

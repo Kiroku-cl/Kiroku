@@ -14,6 +14,9 @@ export default function Preview({
   mirrored,
   onCapturePhoto,
   captureDisabled,
+  countdownActive = false,
+  countdownValue = 0,
+  photoFlashKey = 0,
   onSwitchCamera,
   participantName,
   onParticipantNameChange,
@@ -40,15 +43,21 @@ export default function Preview({
     }
   }, [isEditable]);
 
+  useEffect(() => {
+    if (!photoFlashKey) return;
+    setFlash(true);
+    const timeouts = [
+      setTimeout(() => setFlash(false), 40),
+      setTimeout(() => setFlash(true), 90),
+      setTimeout(() => setFlash(false), 140)
+    ];
+    return () => {
+      timeouts.forEach((t) => clearTimeout(t));
+    };
+  }, [photoFlashKey]);
+
   const handleCapture = useCallback(() => {
     if (captureDisabled) return;
-
-    // Flash doble rapido: on-off-on-off en 300ms
-    setFlash(true);
-    setTimeout(() => setFlash(false), 75);
-    setTimeout(() => setFlash(true), 150);
-    setTimeout(() => setFlash(false), 225);
-
     onCapturePhoto();
   }, [captureDisabled, onCapturePhoto]);
 
@@ -77,10 +86,25 @@ export default function Preview({
       </div>
 
       <div
-        className={`pointer-events-none absolute inset-0 bg-white ${
+        className={`pointer-events-none absolute inset-0 z-10 bg-white ${
           flash ? "opacity-90" : "opacity-0"
         }`}
       />
+
+      {countdownActive && countdownValue > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+          <div className="relative flex h-32 w-32 items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-4 border-white/40 animate-ping" />
+            <div className="absolute inset-4 rounded-full bg-black/70" />
+            <span
+              key={countdownValue}
+              className="countdown-number relative text-6xl font-black tracking-tight text-white drop-shadow-[0_0_35px_rgba(0,0,0,0.95)]"
+            >
+              {countdownValue}
+            </span>
+          </div>
+        </div>
+      )}
 
       <button
         type="button"

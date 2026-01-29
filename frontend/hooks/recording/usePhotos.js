@@ -10,15 +10,34 @@ export function usePhotos({
   const [photos, setPhotos] = useState([]);
   const [photoDelay, setPhotoDelay] = useState(0);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [countdownValue, setCountdownValue] = useState(0);
+  const [countdownActive, setCountdownActive] = useState(false);
   const quotaExceededRef = useRef(false);
-  const delayTimeoutRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const countdownTimeoutRef = useRef(null);
   const canvasRef = useRef(null);
+  const [flashKey, setFlashKey] = useState(0);
 
   const setQuotaExceeded = useCallback((exceeded) => {
     quotaExceededRef.current = exceeded;
   }, []);
 
-  const capturePhotoNow = useCallback(async () => {
+  const stopCountdown = useCallback((resetDisplay = true) => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (countdownTimeoutRef.current) {
+      clearTimeout(countdownTimeoutRef.current);
+      countdownTimeoutRef.current = null;
+    }
+    if (resetDisplay) {
+      setCountdownActive(false);
+      setCountdownValue(0);
+    }
+  }, []);
+
+  const capturePhotoNow = useCallback(async (fromCountdown = false) => {
     if (isCapturing || quotaExceededRef.current) {
       return;
     }
@@ -28,6 +47,11 @@ export function usePhotos({
       return;
     }
 
+    if (fromCountdown) {
+      stopCountdown(false);
+    } else {
+      stopCountdown(true);
+    }
     setIsCapturing(true);
     try {
       const video = videoRef.current;
@@ -98,44 +122,59 @@ export function usePhotos({
         },
         ...prev
       ]);
-      if (photoDelay > 0) {
-        await new Promise((resolve) => setTimeout(resolve, photoDelay * 1000));
-      }
+      setFlashKey((prev) => prev + 1);
     } catch (err) {
       console.error("Error capturando foto:", err);
     } finally {
       setIsCapturing(false);
+      if (fromCountdown) {
+        setCountdownActive(false);
+        setCountdownValue(0);
+      }
     }
-  }, [photoDelay, projectId, videoRef, getElapsedMs, onQuotaExceeded, stylize]);
+  }, [projectId, videoRef, getElapsedMs, onQuotaExceeded, stylize, stopCountdown, isCapturing]);
 
   const capturePhoto = useCallback(() => {
-    if (quotaExceededRef.current) {
+    if (quotaExceededRef.current || countdownActive || isCapturing) {
       return;
     }
 
-    if (delayTimeoutRef.current) {
-      clearTimeout(delayTimeoutRef.current);
-      delayTimeoutRef.current = null;
-    }
+    const delaySeconds = Number(photoDelay) || 0;
 
-    if (photoDelay <= 0) {
-      void capturePhotoNow();
+    if (delaySeconds <= 0) {
+      void capturePhotoNow(false);
       return;
     }
 
-    delayTimeoutRef.current = setTimeout(() => {
-      delayTimeoutRef.current = null;
-      void capturePhotoNow();
-    }, photoDelay * 1000);
-  }, [capturePhotoNow, photoDelay]);
+    stopCountdown(true);
+    setCountdownActive(true);
+    setCountdownValue(delaySeconds);
+
+    let remaining = delaySeconds;
+    countdownIntervalRef.current = setInterval(() => {
+      remaining -= 1;
+      setCountdownValue((prev) => {
+        const nextValue = Math.max(remaining, 1);
+        return remaining >= 1 ? nextValue : prev;
+      });
+      if (remaining <= 1 && countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+        setCountdownValue(1);
+      }
+    }, 1000);
+
+    countdownTimeoutRef.current = setTimeout(() => {
+      stopCountdown(false);
+      void capturePhotoNow(true);
+    }, delaySeconds * 1000);
+  }, [capturePhotoNow, photoDelay, countdownActive, isCapturing, stopCountdown]);
 
   useEffect(() => {
     return () => {
-      if (delayTimeoutRef.current) {
-        clearTimeout(delayTimeoutRef.current);
-      }
+      stopCountdown(true);
     };
-  }, []);
+  }, [stopCountdown]);
 
   return {
     photos,
@@ -144,6 +183,9 @@ export function usePhotos({
     setPhotoDelay,
     capturePhoto,
     isCapturing,
-    setQuotaExceeded
+    setQuotaExceeded,
+    countdownActive,
+    countdownValue,
+    flashKey
   };
 }

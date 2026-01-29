@@ -137,6 +137,9 @@ export default function RecorderShell() {
               mirrored={recorder.isMirrored}
               onCapturePhoto={recorder.capturePhoto}
               captureDisabled={!recorder.canCapturePhoto}
+              countdownActive={recorder.photoCountdownActive}
+              countdownValue={recorder.photoCountdownValue}
+              photoFlashKey={recorder.photoFlashKey}
               onSwitchCamera={recorder.switchCamera}
               participantName={recorder.participantName}
               onParticipantNameChange={recorder.setParticipantName}
@@ -273,6 +276,29 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!recorder.photoFlashKey) return;
+    if (flashTimeoutRef.current) {
+      clearTimeout(flashTimeoutRef.current);
+      flashTimeoutRef.current = null;
+    }
+    setFlash(true);
+    const timeouts = [
+      setTimeout(() => setFlash(false), 40),
+      setTimeout(() => setFlash(true), 85),
+      setTimeout(() => setFlash(false), 130)
+    ];
+    const cleanup = () => {
+      timeouts.forEach((t) => clearTimeout(t));
+      setFlash(false);
+    };
+    flashTimeoutRef.current = setTimeout(() => {
+      cleanup();
+      flashTimeoutRef.current = null;
+    }, 160);
+    return cleanup;
+  }, [recorder.photoFlashKey]);
+
   const triggerFlash = (setter) => {
     setter(true);
     setTimeout(() => setter(false), 175);
@@ -297,13 +323,6 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
 
   const handleCapture = () => {
     if (!recorder.canCapturePhoto) return;
-    
-    // Flash doble rapido: on-off-on-off en 300ms
-    setFlash(true);
-    setTimeout(() => setFlash(false), 75);
-    setTimeout(() => setFlash(true), 150);
-    setTimeout(() => setFlash(false), 225);
-    
     recorder.capturePhoto();
   };
 
@@ -403,6 +422,21 @@ function MobileRecorder({ recorder, className = "", nameFlash, setNameFlash }) {
             flash ? "opacity-90" : "opacity-0"
           }`}
         />
+
+        {recorder.photoCountdownActive && recorder.photoCountdownValue > 0 && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <div className="relative flex h-36 w-36 items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-4 border-white/35 animate-ping" />
+              <div className="absolute inset-6 rounded-full bg-black/70" />
+              <span
+                key={recorder.photoCountdownValue}
+                className="countdown-number relative text-6xl font-black text-white drop-shadow-[0_0_35px_rgba(0,0,0,0.95)]"
+              >
+                {recorder.photoCountdownValue}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tag participante */}
