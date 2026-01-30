@@ -251,7 +251,11 @@ def load_state(project_id):
 
     session = Session()
     try:
-        state_row, project_row, chunks, segments = _fetch_state_rows(session, project_uuid)
+        try:
+            state_row, project_row, chunks, segments = _fetch_state_rows(session, project_uuid)
+        except Exception as e:
+            log.error("Error al cargar estado (¿migraciones pendientes?): %s", e)
+            return None
         if not state_row:
             return None
         data = _build_state_dict(state_row, project_row, chunks, segments)
@@ -571,11 +575,7 @@ def update_project_status(project_id, **fields):
             "output_file",
             "fallback_file",
             "error_message",
-            "stylize_errors",
-            "llm_prompt_tokens",
-            "llm_completion_tokens",
-            "llm_total_tokens",
-            "llm_cost_usd"
+            "stylize_errors"
         ]:
             if attr in fields and fields[attr] is not None:
                 value = fields[attr]

@@ -160,10 +160,6 @@ class Project(Base):
     error_message = Column(Text, nullable=True)
     stylize_errors = Column(Integer, nullable=False, default=0)
 
-    llm_prompt_tokens = Column(Integer, nullable=True)
-    llm_completion_tokens = Column(Integer, nullable=True)
-    llm_total_tokens = Column(Integer, nullable=True)
-    llm_cost_usd = Column(Numeric(10, 4), nullable=True)
 
     user = relationship("User", back_populates="projects")
 

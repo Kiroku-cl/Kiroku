@@ -1,4 +1,5 @@
-import os
+import re
+
 from config import Config
 from helpers import load_prompt
 from logger import get_logger
@@ -7,26 +8,55 @@ from services.openai_client import get_openai_client
 log = get_logger("llm")
 
 
-def generate_script(transcript_with_markers, participant_name="ACTOR"):
-    script, _usage = generate_script_with_usage(
-        transcript_with_markers,
-        participant_name
-    )
-    return script
+TOKEN_PATTERN = re.compile(r"\[\[PH_(\d+)\]\]")
 
 
-def generate_script_with_usage(transcript_with_markers, participant_name="ACTOR"):
+def build_photo_token_map(photos):
+    mapping = {}
+    for index, photo in enumerate(photos):
+        token = f"[[PH_{index}]]"
+        mapping[token] = photo["photo_id"]
+    return mapping
+
+
+def inject_photo_tokens(transcript_with_markers, token_map):
+    updated = transcript_with_markers
+    for token, photo_id in token_map.items():
+        marker = f"[[FOTO:{photo_id}]]"
+        updated = updated.replace(marker, token)
+    return updated
+
+
+def validate_photo_tokens(text, token_map):
+    expected_tokens = set(token_map.keys())
+    found_tokens = {f"[[PH_{m}]]" for m in TOKEN_PATTERN.findall(text)}
+    missing = expected_tokens - found_tokens
+    unknown = found_tokens - expected_tokens
+    return {
+        "missing": missing,
+        "unknown": unknown
+    }
+
+
+def rehydrate_photo_tokens(text, token_map):
+    rehydrated = text
+    for token, photo_id in token_map.items():
+        rehydrated = rehydrated.replace(token, f"[[FOTO:{photo_id}]]")
+    return rehydrated
+
+
+def generate_script(transcript_with_tokens, participant_name="ACTOR"):
     client = get_openai_client()
     if not client:
         log.warning("Cliente OpenAI no disponible, retornando raw")
-        return transcript_with_markers, None
+        return transcript_with_tokens
 
     try:
         log.info(f"Generando guion para {participant_name}...")
 
         user_content = (
             f"Nombre del participante: {participant_name}\n\n"
-            f"Transcripción:\n{transcript_with_markers}"
+            f"Transcripción:\n{transcript_with_tokens}"
         )
 
         response = client.chat.completions.create(
@@ -42,35 +72,12 @@ def generate_script_with_usage(transcript_with_markers, participant_name="ACTOR"
             max_tokens=4000
         )
 
-        result = response.choices[0].message.content.strip()
-        usage = None
-        if getattr(response, "usage", None):
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
-            }
+        result = ""
+        if getattr(response, "choices", None):
+            result = (response.choices[0].message.content or "").strip()
         log.info("Guion generado exitosamente")
-        return result, usage
+        return result
 
     except Exception as e:
         log.error(f"Generación LLM falló: {e}")
-        return transcript_with_markers, None
-
-
-def replace_markers_with_images(script, photos):
-    """
-    Reemplaza [[FOTO:<id>]] con sintaxis Markdown de imagen.
-    Usa imagen estilizada si existe, si no la original.
-    """
-    for photo in photos:
-        marker = f"[[FOTO:{photo['photo_id']}]]"
-        # Preferir estilizada, si no original
-        img_path = photo.get("stylized_path") or photo.get("original_path")
-        if img_path:
-            # Usar path relativo para el markdown
-            img_name = os.path.basename(img_path)
-            img_md = f"\n\n![Foto]({img_name})\n\n"
-            script = script.replace(marker, img_md)
-
-    return script
+        return transcript_with_tokens

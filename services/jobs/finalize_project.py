@@ -4,9 +4,13 @@ import time
 from logger import get_logger
 from services import project_store, timeline, quotas
 from services.llm_service import (
-    generate_script_with_usage,
-    replace_markers_with_images
+    build_photo_token_map,
+    generate_script,
+    inject_photo_tokens,
+    rehydrate_photo_tokens,
+    validate_photo_tokens
 )
+from services import render
 
 
 log = get_logger("finalize_project")
@@ -31,7 +35,8 @@ def finalize_project_job(project_id):
     ).strip()
 
     photos = timeline.get_photos(project_id)
-    transcript_with_markers = _insert_photo_markers(ordered_segments, photos)
+    sorted_photos = sorted(photos, key=lambda p: p.get("t_ms", 0))
+    transcript_with_markers = _insert_photo_markers(ordered_segments, sorted_photos)
 
     project_dir = project_store.get_project_dir(project_id)
     fallback_path = os.path.join(project_dir, "transcript_raw.txt")
@@ -41,14 +46,24 @@ def finalize_project_job(project_id):
     participant_name = state.get("participant_name", "ACTOR")
     project_name = state.get("project_name", "Guion")
 
+    token_map = build_photo_token_map(sorted_photos)
+    transcript_with_tokens = inject_photo_tokens(transcript_with_markers, token_map)
+
     llm_start = time.time()
-    script, usage = generate_script_with_usage(
-        transcript_with_markers,
-        participant_name
-    )
+    script = generate_script(transcript_with_tokens, participant_name)
     llm_time = time.time() - llm_start
 
-    final_script = replace_markers_with_images(script, photos)
+    token_checks = validate_photo_tokens(script, token_map)
+    if token_checks["unknown"] or token_checks["missing"]:
+        log.error(
+            "Marcadores de fotos inconsistentes: missing=%s unknown=%s",
+            token_checks["missing"],
+            token_checks["unknown"]
+        )
+        raise RuntimeError("El guion del LLM tiene marcadores de foto inválidos")
+
+    script_with_markers = rehydrate_photo_tokens(script, token_map)
+    final_script = render.replace_markers_with_images(script_with_markers, sorted_photos)
     output_path = os.path.join(project_dir, "script.md")
     with open(output_path, "w", encoding="utf-8") as fh:
         fh.write(f"# {project_name}\n\n")
@@ -67,11 +82,7 @@ def finalize_project_job(project_id):
         status="done",
         output_file="script.md",
         fallback_file="transcript_raw.txt",
-        stylize_errors=max(0, metrics.get("photos_total", 0) - metrics.get("photos_processed", 0)),
-        llm_prompt_tokens=(usage or {}).get("prompt_tokens"),
-        llm_completion_tokens=(usage or {}).get("completion_tokens"),
-        llm_total_tokens=(usage or {}).get("total_tokens"),
-        llm_cost_usd=None
+        stylize_errors=max(0, metrics.get("photos_total", 0) - metrics.get("photos_processed", 0))
     )
 
     user_id = state.get("user_id")

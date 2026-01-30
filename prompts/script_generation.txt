@@ -11,7 +11,7 @@ PERSONA: diálogo
 
 PERSONA2: diálogo
 
-[[FOTO:id]]
+[[PH_0]]
 
 Bloques de vida interna (siempre multilínea):
 
@@ -47,8 +47,8 @@ CORRECCIONES Y DESCARTES
 
 FOTOS
 
-10) Respeta [[FOTO:id]] exactamente donde aparece en la transcripción.
-11) No mover, no duplicar ni modificar el marcador.
+10) Respeta cada marcador de foto [[PH_x]] exactamente donde aparece en la transcripción.
+11) No mover, no duplicar ni modificar el texto del marcador.
 
 VIDA INTERNA
 
@@ -81,14 +81,14 @@ Entrada:
 "yo digo: buenas noches… no, mejor buenas noches, gracias por venir.
 acá el espectador dice que él eligió la carta.
 en este momento saco la carta lentamente del bolsillo y está firmada.
-[[FOTO:img001]]
+[[PH_1]]
 esta es tu carta?
 olvida eso, mejor pregunto cuál era tu carta.
 el espectador dice que es el as de picas.
 ahora vida interna, lo que hago es preparar el doble para el vistazo.
-[[FOTO:img002]]
+[[PH_2]]
 volvemos a la vida externa y doy vuelta la carta mostrando que es el as de picas
-[[FOTO:img003]] el espectador dice muy sorprendido, como lo hiciste?"
+[[PH_3]] el espectador dice muy sorprendido, como lo hiciste?"
 
 Salida esperada:
 
@@ -98,7 +98,7 @@ Espectador: Yo elegí la carta.
 
 (<NOMBRE> saca lentamente la carta firmada del bolsillo)
 
-[[FOTO:img001]]
+[[PH_1]]
 
 <NOMBRE>: ¿Cuál era tu carta?
 
@@ -106,12 +106,11 @@ Espectador: El as de picas.
 
 <VIDA INTERNA>
 El performer prepara el doble para el vistazo.
-[[FOTO:img002]]
+[[PH_2]]
 </VIDA INTERNA>
 
 (<NOMBRE> da vuelta la carta y muestra que es el as de picas)
 
-[[FOTO:img003]]
+[[PH_3]]
 
 Espectador: (Muy sorprendido) ¿Cómo lo hiciste?
-
