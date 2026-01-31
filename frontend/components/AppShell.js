@@ -92,7 +92,10 @@ export default function AppShell({
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-4">
           <div className="flex items-center gap-3 shrink-0">
-            <span className="text-sm lg:text-xl font-semibold tracking-[0.3em] text-accent">Kiroku</span>
+            <div className="flex items-center gap-2">
+              <span className="brand-dot" aria-hidden />
+              <span className="brand-word text-sm lg:text-xl text-white">Kiroku</span>
+            </div>
             {showNewRecording && (
               <Link
                 href="/record"

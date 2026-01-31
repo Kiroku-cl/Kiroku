@@ -3,12 +3,45 @@
 
 :root {
   color-scheme: dark;
+  --accent: #F60761;
+  --fucsia: #ff6ad5;
+  --accent-glow: rgba(246, 7, 97, 0.55);
 }
 
 body {
   background: #0a0e14;
   color: #f5f5f5;
   font-family: "Geist", "Segoe UI", system-ui, sans-serif;
+}
+
+.brand-word {
+  font-family: var(--font-inter), "Inter", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.brand-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(246, 7, 97, 0.35);
+  box-shadow: 0 0 12px rgba(246, 7, 97, 0.25), 0 0 30px var(--accent-glow);
+  animation: recording 1.5s ease-in-out infinite;
+}
+
+@keyframes recording {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
 }
 
 @keyframes countdown-pop {

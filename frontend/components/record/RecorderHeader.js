@@ -14,7 +14,10 @@ export default function RecorderHeader({
     <header className="shrink-0 z-40 border-b border-bg-surface-light/80 bg-bg-primary/90 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4">
         <div className="flex items-center gap-4">
-          <span className="text-sm lg:text-xl font-semibold tracking-[0.3em] text-accent">Kiroku</span>
+          <div className="flex items-center gap-2">
+            <span className="brand-dot" aria-hidden />
+            <span className="brand-word text-sm lg:text-xl text-white">Kiroku</span>
+          </div>
           <input
             value={projectName}
             onChange={(event) => onProjectNameChange(event.target.value)}
