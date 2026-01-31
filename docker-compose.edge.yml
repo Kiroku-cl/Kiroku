@@ -1,5 +1,6 @@
 services:
   nginx:
+    container_name: app-edge
     ports: []
     volumes:
       - ./infra/nginx/conf.d/app.prod.http.conf:/etc/nginx/conf.d/default.conf:ro
@@ -17,5 +18,5 @@ services:
 networks:
   edge:
     external: true
-    name: "${EDGE_NETWORK_NAME:-edge}"
+    name: "${EDGE_NETWORK:-edge}"
 
