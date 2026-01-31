@@ -10,6 +10,7 @@ log = get_logger("image")
 
 def stylize_image(input_path, output_path):
     if not Config.IMAGE_STYLE_ENABLED:
+        log.info("Abortando stylize_image. IMAGE_STYLE_ENABLED=false")
         return False
 
     if not os.path.exists(input_path):

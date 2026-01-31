@@ -76,7 +76,6 @@ def register_cli(app):
     @click.argument("project_id")
     @click.option("--output", "output_path", type=click.Path(), help="Archivo de salida opcional")
     def export_project(project_id, output_path):
-        """Exporta el estado del proyecto a JSON."""
         data = project_store.export_project_state(project_id)
         if not data:
             click.echo("Proyecto no encontrado", err=True)

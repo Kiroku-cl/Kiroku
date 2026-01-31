@@ -1,4 +1,5 @@
 import os
+import os
 import shutil
 import subprocess
 
@@ -11,7 +12,7 @@ from services.queue import get_queue
 from services.storage import get_audio_storage
 
 
-log = get_logger("audio_prepare")
+log = get_logger("prepare_project")
 
 
 def prepare_project_job(project_id):
@@ -24,7 +25,7 @@ def prepare_project_job(project_id):
     ingest = state.get("ingest", {})
     chunks = sorted(ingest.get("chunks", []), key=lambda c: c.get("seq", 0))
     if not chunks:
-        raise RuntimeError("No hay chunks para procesar")
+        raise RuntimeError("No hay chunks de audio para procesar")
 
     project_dir = project_store.get_project_dir(project_id)
     audio_dir = os.path.join(project_dir, "audio")

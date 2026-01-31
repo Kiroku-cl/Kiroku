@@ -1,71 +1,114 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE=${1:-}
-ACTION=${2:-}
-MESSAGE=${3:-}
-
-if [[ -z "$MODE" || -z "$ACTION" ]]; then
-  echo "Uso: scripts/manage.sh dev|prod migrate|build-frontend|revision|admin-create|status [mensaje]"
-  exit 1
-fi
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT_DIR/.env"
 
-if [[ "$MODE" == "dev" ]]; then
-  COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.yml")
-elif [[ "$MODE" == "prod" ]]; then
-  COMPOSE=(docker compose -f "$ROOT_DIR/docker-compose.prod.yml")
-else
-  echo "Modo inválido: $MODE"
-  exit 1
-fi
+die() { echo "[-] Error: $*" >&2; exit 1; }
+
+require_env() {
+  [[ -f "$ENV_FILE" ]] || die ".env no existe en $ROOT_DIR"
+  set -a
+  source "$ENV_FILE"
+  set +a
+
+  [[ -n "${APP_ENV:-}" ]] || die "APP_ENV no está definido en .env"
+  [[ -n "${APP_EXPOSURE:-}" ]] || die "APP_EXPOSURE no está definido en .env"
+  [[ -n "${EDGE_NETWORK:-}" ]] || EDGE_NETWORK="edge"
+
+  if [[ "$APP_ENV" == "development" && "$APP_EXPOSURE" == "edge" ]]; then
+    die "No se permite APP_EXPOSURE=edge cuando APP_ENV=development"
+  fi
+}
+
+compose_args() {
+  local files=()
+  files+=(-f "$ROOT_DIR/docker-compose.base.yml")
+
+  if [[ "$APP_ENV" == "development" ]]; then
+    files+=(-f "$ROOT_DIR/docker-compose.dev.yml")
+  else
+    files+=(-f "$ROOT_DIR/docker-compose.prod.yml")
+    if [[ "$APP_EXPOSURE" == "edge" ]]; then
+      files+=(-f "$ROOT_DIR/docker-compose.edge.yml")
+    fi
+  fi
+
+  printf '%s\n' "${files[@]}"
+}
+
+dc() {
+  local -a files
+  mapfile -t files < <(compose_args)
+  docker compose "${files[@]}" "$@"
+}
 
 ensure_backend_running() {
   local running
-  running=$("${COMPOSE[@]}" ps --services --filter "status=running" | grep -x "backend" || true)
-  if [[ -z "$running" ]]; then
-    echo "El servicio backend no está activo. Ejecuta deploy primero."
-    exit 1
-  fi
+  running="$(dc ps --services --filter "status=running" | grep -x "backend" || true)"
+  [[ -n "$running" ]] || die "backend no está corriendo."
 }
 
-ensure_frontend_running() {
-  local running
-  running=$("${COMPOSE[@]}" ps --services --filter "status=running" | grep -x "frontend" || true)
-  if [[ -z "$running" ]]; then
-    echo "El servicio frontend no está activo. Ejecuta deploy primero."
-    exit 1
-  fi
+cmd="${1:-}"
+shift || true
+
+usage() {
+  cat <<'EOF'
+Uso:
+  ./manage.sh migrate
+  ./manage.sh admin-create
+  ./manage.sh export-project <PROJECT_ID> --output <file>
+  ./manage.sh status
+EOF
 }
 
-case "$ACTION" in
+require_env
+
+case "$cmd" in
   migrate)
     ensure_backend_running
-    "${COMPOSE[@]}" exec backend alembic upgrade head
+    dc exec backend alembic upgrade head
     ;;
-  revision)
-    if [[ -z "$MESSAGE" ]]; then
-      echo "Uso: scripts/manage.sh $MODE revision \"mensaje\""
-      exit 1
-    fi
-    ensure_backend_running
-    "${COMPOSE[@]}" exec backend alembic revision --autogenerate -m "$MESSAGE"
-    ;;
-  build-frontend)
-    ensure_frontend_running
-    "${COMPOSE[@]}" exec frontend npm run build
-    ;;
+
   admin-create)
     ensure_backend_running
-    "${COMPOSE[@]}" exec backend flask create-admin
+    dc exec backend flask create-admin
     ;;
-  status)
-    "${COMPOSE[@]}" ps
+
+  export-project)
+    ensure_backend_running
+    [[ $# -ge 1 ]] || die "Uso: ./manage.sh export-project <PROJECT_ID> --output <file>"
+    PROJECT_ID="$1"
+    shift
+
+    OUTPUT=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          shift
+          OUTPUT="${1:-}"
+          ;;
+        *)
+          die "Argumento inválido: $1"
+          ;;
+      esac
+      shift || true
+    done
+
+    [[ -n "$OUTPUT" ]] || die "Falta --output <file>"
+    dc exec backend flask export-project "$PROJECT_ID" --output "$OUTPUT"
     ;;
+
+  status|ps)
+    dc ps
+    ;;
+
+  ""|-h)
+    usage
+    ;;
+
   *)
-    echo "Acción inválida: $ACTION"
-    echo "Uso: scripts/manage.sh dev|prod migrate|build-frontend|revision|admin-create|status [mensaje]"
-    exit 1
+    die "Comando inválido: '$cmd'"
     ;;
 esac
+

@@ -10,14 +10,14 @@ log = get_logger("orchestrator")
 
 
 def enqueue_processing_pipeline(project_id):
-    from services.jobs import audio_prepare
+    from services.jobs import prepare_project
 
-    queue = get_queue(Config.RQ_AUDIO_QUEUE)
+    queue = get_queue(Config.RQ_PREPARE_QUEUE)
     retry = Retry(max=3, interval=[10, 60, 180])
     job = queue.enqueue(
-        audio_prepare.prepare_project_job,
+        prepare_project.prepare_project_job,
         project_id,
-        job_timeout=Config.AUDIO_PREP_JOB_TIMEOUT,
+        job_timeout=Config.PREPARE_PROJECT_TIMEOUT,
         retry=retry
     )
     project_store.update_processing_jobs(project_id, {"prepare": job.id})

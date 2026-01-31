@@ -1,0 +1,78 @@
+x-worker-base: &worker_base
+  build: ./backend
+  env_file:
+    - .env
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  networks:
+    - internal_net
+
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - internal_net
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal_net
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - internal_net
+
+  worker-prepare:
+    <<: *worker_base
+    command: python worker.py --queues ${RQ_PREPARE_QUEUE}
+
+  worker-transcribe:
+    <<: *worker_base
+    command: python worker.py --queues ${RQ_TRANSCRIBE_QUEUE}
+
+  worker-photos:
+    <<: *worker_base
+    command: python worker.py --queues ${RQ_PHOTO_QUEUE}
+
+  worker-llm:
+    <<: *worker_base
+    command: python worker.py --queues ${RQ_LLM_QUEUE}
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  internal_net:
+    driver: bridge
