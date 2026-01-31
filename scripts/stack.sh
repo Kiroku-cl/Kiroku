@@ -23,11 +23,11 @@ require_env() {
   fi
 
   if [[ "$APP_ENV" != "development" && "$APP_ENV" != "production" ]]; then
-    die "APP_ENV inválido: Valores válidos de '$APP_ENV': development|production"
+    die "APP_ENV inválido: Valores válidos de '$APP_ENV'"
   fi
 
   if [[ "$APP_EXPOSURE" != "public" && "$APP_EXPOSURE" != "edge" ]]; then
-    die "APP_EXPOSURE inválido: Valores válidos de '$APP_EXPOSURE': public|edge"
+    die "APP_EXPOSURE inválido: Valores válidos de '$APP_EXPOSURE'"
   fi
 }
 
@@ -84,7 +84,7 @@ Uso:
   ./stack.sh status
   ./stack.sh restart <servicios>
   ./stack.sh rebuild <servicios>
-  ./stack.sh logs [args...] [-- servicios]
+  ./stack.sh logs [args...] [-- <servicios>]
   ./stack.sh prune                     
   ./stack.sh config [args...]
 EOF
