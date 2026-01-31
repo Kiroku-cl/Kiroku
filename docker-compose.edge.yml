@@ -9,7 +9,7 @@ services:
       - edge
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=edge"
+      - "traefik.docker.network=${EDGE_NETWORK:-edge}"
       - "traefik.http.routers.kiroku-app.rule=Host(`${APP_HOST}`)"
       - "traefik.http.routers.kiroku-app.entrypoints=websecure"
       - "traefik.http.routers.kiroku-app.tls=true"
