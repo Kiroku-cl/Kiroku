@@ -1,8 +1,8 @@
 services:
   backend:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
       # prevenir sobreescritura
       - /app/.venv
     environment:
@@ -34,7 +34,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kiroku -d kiroku"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,9 +48,9 @@ services:
     command: redis-server --appendonly yes
 
   worker-audio:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/.venv
     environment:
       - FLASK_ENV=development
@@ -64,9 +64,9 @@ services:
         condition: service_started
 
   worker-transcribe:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/.venv
     environment:
       - FLASK_ENV=development
@@ -80,9 +80,9 @@ services:
         condition: service_started
 
   worker-photos:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/.venv
     environment:
       - FLASK_ENV=development
@@ -96,9 +96,9 @@ services:
         condition: service_started
 
   worker-llm:
-    build: .
+    build: ./backend
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/.venv
     environment:
       - FLASK_ENV=development

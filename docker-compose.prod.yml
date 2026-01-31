@@ -1,6 +1,6 @@
 services:
   backend:
-    build: .
+    build: ./backend
     environment:
       - FLASK_ENV=production
     env_file:
@@ -50,7 +50,7 @@ services:
       - internal_net
 
   worker-audio:
-    build: .
+    build: ./backend
     environment:
       - FLASK_ENV=production
     env_file:
@@ -68,7 +68,7 @@ services:
       - internal_net
 
   worker-transcribe:
-    build: .
+    build: ./backend
     environment:
       - FLASK_ENV=production
     env_file:
@@ -86,7 +86,7 @@ services:
       - internal_net
 
   worker-photos:
-    build: .
+    build: ./backend
     environment:
       - FLASK_ENV=production
     env_file:
@@ -104,7 +104,7 @@ services:
       - internal_net
 
   worker-llm:
-    build: .
+    build: ./backend
     environment:
       - FLASK_ENV=production
     env_file:
