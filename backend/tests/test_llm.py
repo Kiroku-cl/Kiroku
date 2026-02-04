@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
 from helpers import load_prompt
-from services.llm_service import generate_script
-from services.openai_client import get_openai_client
+from services.lm.llm_service import generate_script
+from services.lm.openai_client import get_openai_client
 
 
 def main():

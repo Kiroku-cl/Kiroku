@@ -1,12 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  CalendarIcon,
-  ClockIcon,
-  CameraIcon,
-  ArrowPathIcon
-} from "@heroicons/react/24/solid";
+import { CalendarIcon, ClockIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
 
 const STATUS_LABELS = {
   recording: "Grabando",
@@ -60,10 +55,6 @@ export default function ProjectCard({ project, onRequestDelete }) {
         <span className="inline-flex items-center gap-1">
           <CalendarIcon className="h-3.5 w-3.5" />
           {project.created_at ? new Date(project.created_at).toLocaleString("es-ES") : "-"}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <CameraIcon className="h-3.5 w-3.5" />
-          {project.photo_count} fotos
         </span>
         <span className="inline-flex items-center gap-1">
           <ClockIcon className="h-3.5 w-3.5" />

@@ -28,9 +28,11 @@ export default async function ResultPage({ params }) {
       projectId={projectId}
       initialStatus={status.status}
       initialError={status.error}
-      initialOutputFile={status.output_file}
-      initialFallbackFile={status.fallback_file}
       projectName={status.project_name}
+      initialParticipantName={status.participant_name}
+      initialCreatedAt={status.created_at}
+      initialExpiresAt={status.expires_at}
+      initialRecordingDuration={status.recording_duration_seconds}
     />
   );
 }

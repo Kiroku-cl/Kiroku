@@ -27,7 +27,6 @@ def upgrade():
             try:
                 batch_op.drop_column(col)
             except Exception:
-                # tolerar si ya no existe
                 pass
 
 

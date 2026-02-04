@@ -1,6 +1,6 @@
 "use client";
 
-export default function Modal({ open, title, children, onClose, maxWidth = "max-w-xl" }) {
+export default function Modal({ open, title, children, onClose, maxWidth = "max-w-xl", hideCloseButton = false }) {
   if (!open) return null;
 
   return (
@@ -17,7 +17,7 @@ export default function Modal({ open, title, children, onClose, maxWidth = "max-
       <div className={`w-full ${maxWidth} rounded-2xl border border-white/10 bg-bg-surface px-6 py-5 shadow-2xl`}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-text-primary">{title}</h3>
-          {onClose ? (
+          {onClose && !hideCloseButton ? (
             <button
               type="button"
               onClick={onClose}

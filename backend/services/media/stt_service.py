@@ -1,14 +1,14 @@
 import os
 from config import Config
 from logger import get_logger
-from services.openai_client import get_openai_client
+from services.lm.openai_client import get_openai_client
 
 log = get_logger("stt")
 
 
 def transcribe_wav(wav_path):
     if not os.path.exists(wav_path):
-        log.warning(f"Archivo WAV no encontrado: {wav_path}")
+        log.warning("Archivo WAV no encontrado: %s", wav_path)
         return ""
 
     client = get_openai_client()
@@ -24,10 +24,10 @@ def transcribe_wav(wav_path):
             )
 
         text = (getattr(response, "text", "") or "").strip()
-        log.info(f"Transcripción con OpenAI: {text}")
+        log.info("Transcripción con OpenAI: %s", text)
 
         return text
 
     except Exception as e:
-        log.error(f"Transcripción fallida: {e}")
+        log.error("Transcripción fallida: %s", e)
         return ""

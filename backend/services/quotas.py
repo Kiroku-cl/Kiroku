@@ -190,7 +190,7 @@ def _reserve_quota(
         db.commit()
 
         if reason:
-            log.info(f"Reserva de cuota {label}: user={user.id} reason={reason}")
+            log.info("Reserva de cuota %s: user=%s reason=%s", label, user.id, reason)
 
         return True, None
     finally:

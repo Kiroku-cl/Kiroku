@@ -3,7 +3,7 @@ import time
 
 from logger import get_logger
 from services import project_store, timeline, quotas
-from services.image_stylize import stylize_image
+from services.media.image_stylize import stylize_image
 
 
 log = get_logger("stylize_photo")

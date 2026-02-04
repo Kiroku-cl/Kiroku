@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import cast
 
-from sqlalchemy import update, func
+from sqlalchemy import update
 
 from config import Config
 from extensions import Session
@@ -17,7 +17,6 @@ from models import (
     ProjectState,
     ProjectSegment,
     ProjectIngestChunk,
-    ProjectPhoto,
     utcnow
 )
 from services.cache import get_redis_client
@@ -617,19 +616,9 @@ def list_projects(user_id, limit=10, offset=0, query=None, status=None):
 
     session = Session()
     try:
-        photo_counts = (
-            session.query(
-                ProjectPhoto.project_id.label("project_id"),
-                func.count(ProjectPhoto.id).label("photo_count")
-            )
-            .group_by(ProjectPhoto.project_id)
-            .subquery()
-        )
-
         base = (
-            session.query(Project, ProjectState, photo_counts.c.photo_count)
+            session.query(Project, ProjectState)
             .join(ProjectState, ProjectState.project_id == Project.id)
-            .outerjoin(photo_counts, photo_counts.c.project_id == Project.id)
             .filter(Project.user_id == user_uuid)
         )
 
@@ -652,7 +641,7 @@ def list_projects(user_id, limit=10, offset=0, query=None, status=None):
         )
 
         projects = []
-        for project, state_row, photo_count in rows:
+        for project, state_row in rows:
             projects.append({
                 "project_id": str(project.id),
                 "project_name": project.title,
@@ -663,8 +652,7 @@ def list_projects(user_id, limit=10, offset=0, query=None, status=None):
                 "recording_duration_seconds": state_row.recording_duration_seconds,
                 "created_at": project.created_at.isoformat() if project.created_at else None,
                 "expires_at": project.expires_at.isoformat() if project.expires_at else None,
-                "stylize_errors": project.stylize_errors,
-                "photo_count": int(photo_count or 0)
+                "stylize_errors": project.stylize_errors
             })
 
         return projects, total

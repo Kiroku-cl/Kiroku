@@ -4,7 +4,7 @@ import { useState } from "react";
 import ProjectCard from "./ProjectCard";
 import ProjectsFilters from "./ProjectsFilters";
 import { useProjects } from "@/hooks/useProjects";
-import Modal from "@/components/common/Modal";
+import DeleteProjectModal from "@/components/Projects/DeleteProjectModal";
 
 export default function ProjectsList() {
   const { items, total, limit, loading, load, applyFilters } = useProjects();
@@ -80,35 +80,13 @@ export default function ProjectsList() {
         </button>
       ) : null}
 
-      <Modal
+      <DeleteProjectModal
         open={Boolean(deleteTarget)}
-        title="Eliminar proyecto"
         onClose={() => setDeleteTarget(null)}
-      >
-        <div className="space-y-4 text-sm text-text-secondary">
-          <p>
-            ¿Eliminar proyecto? Se eliminará permanentemente "
-            {deleteTarget?.project_name || "Sin título"}" y todos sus archivos asociados.
-          </p>
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="rounded-lg border border-bg-surface-light px-4 py-2 text-xs font-semibold text-text-secondary"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={deleteLoading}
-              className="rounded-lg border border-error/40 bg-error/10 px-4 py-2 text-xs font-semibold text-error"
-            >
-              {deleteLoading ? "Eliminando..." : "Eliminar"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={onDelete}
+        loading={deleteLoading}
+        projectName={deleteTarget?.project_name || ""}
+      />
     </div>
   );
 }

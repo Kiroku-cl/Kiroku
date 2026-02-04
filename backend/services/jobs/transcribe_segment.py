@@ -3,7 +3,7 @@ import time
 
 from logger import get_logger
 from services import project_store
-from services.stt_service import transcribe_wav
+from services.media.stt_service import transcribe_wav
 
 
 log = get_logger("transcribe_segment")

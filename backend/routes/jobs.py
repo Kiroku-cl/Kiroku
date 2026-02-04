@@ -2,13 +2,20 @@ import os
 import re
 import html as html_lib
 
-from flask import Blueprint, jsonify, send_from_directory
-from flask_login import login_required, current_user
+from io import BytesIO
 
+import markdown2
+from docx import Document
+from docx.shared import Inches
+from flask import Blueprint, jsonify, send_from_directory, request, make_response
+from flask_login import login_required, current_user
+from weasyprint import HTML
+
+from logger import get_logger
 from helpers import is_valid_uuid, encode_image_base64, get_mime_type
 from models import utcnow
 from services import project_store
-
+from extensions import limiter
 
 jobs_bp = Blueprint('jobs', __name__)
 
@@ -30,9 +37,13 @@ def project_status(project_id):
         "status": record.status,
         "error": record.error_message,
         "output_file": record.output_file,
-        "fallback_file": record.fallback_file,
         "project_name": state.get("project_name", record.title),
         "participant_name": state.get("participant_name", ""),
+        "recording_duration_seconds": state.get("recording_duration_seconds"),
+        "created_at": record.created_at.isoformat() if getattr(record, "created_at", None) else None,
+        "expires_at": state.get("expires_at") or (
+            record.expires_at.isoformat() if getattr(record, "expires_at", None) else None
+        ),
         "progress": state.get("progress", {}),
         "processing_jobs": state.get("processing_jobs", {})
     })
@@ -53,7 +64,7 @@ def download_file(project_id, filename):
         return "Proyecto expirado", 410
 
     safe_filename = os.path.basename(filename)
-    allowed = {record.output_file, record.fallback_file}
+    allowed = {record.output_file}
     if safe_filename not in allowed:
         return "No encontrado", 404
 
@@ -103,6 +114,8 @@ def project_preview(project_id):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# QUIE ASCO QUE ASCOOO NO ME FUNEN
+# Parser casero de markdown a html basico :)
 def convert_script_to_html(content, project_id):
     project_dir = project_store.get_project_dir(project_id)
     photos_dir = os.path.join(project_dir, "photos")
@@ -175,3 +188,126 @@ def convert_script_to_html(content, project_id):
         html_parts.append(f'<div style="margin: 0; white-space: pre-wrap;">{text}</div>')
 
     return '\n'.join(html_parts)
+
+
+def _load_script_content(project_id):
+    project_dir = project_store.get_project_dir(project_id)
+    script_path = os.path.join(project_dir, "script.md")
+    if not os.path.exists(script_path):
+        return None, None
+    with open(script_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return content, project_dir
+
+
+def _check_access(project_id):
+    if not is_valid_uuid(project_id):
+        return False, (jsonify({"ok": False, "error": "project_id inválido"}), 400)
+
+    record = project_store.get_project_for_user(project_id, current_user.id)
+    if not record:
+        return False, (jsonify({"ok": False, "error": "Proyecto no encontrado"}), 404)
+
+    expires_at = record.expires_at
+    if expires_at is not None and expires_at <= utcnow():
+        return False, (jsonify({"ok": False, "error": "Proyecto expirado"}), 410)
+
+    return True, record
+
+
+@jobs_bp.route("/api/project/<project_id>/export/pdf", methods=["POST"])
+@login_required
+def export_pdf(project_id):
+    ok, result = _check_access(project_id)
+    if not ok:
+        return result
+
+    record = result
+    content, project_dir = _load_script_content(project_id)
+    if content is None:
+        return jsonify({"ok": False, "error": "script no encontrado"}), 404
+
+    html = markdown2.markdown(content)
+    try:
+        pdf_bytes = HTML(string=html, base_url=project_dir).write_pdf()
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = 'attachment; filename="guion_%s.pdf"' % str(project_id)[:8]
+        return response
+    except Exception as e:
+        log = get_logger("jobs")
+        log.error("Export PDF failed for project %s: %s", project_id, e)
+        return jsonify({"ok": False, "error": "Error al generar PDF"}), 500
+
+
+@jobs_bp.route("/api/project/<project_id>/export/docx", methods=["POST"])
+@login_required
+def export_docx(project_id):
+    ok, result = _check_access(project_id)
+    if not ok:
+        return result
+
+    record = result
+    content, project_dir = _load_script_content(project_id)
+    if content is None:
+        return jsonify({"ok": False, "error": "script no encontrado"}), 404
+
+    try:
+        doc = Document()
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                doc.add_paragraph("")
+                continue
+            if line.startswith("# "):
+                doc.add_heading(line[2:].strip(), level=1)
+                continue
+            if line.startswith("## "):
+                doc.add_heading(line[3:].strip(), level=2)
+                continue
+            img_match = re.match(r'!\[(.*?)\]\((.+?)\)', line)
+            if img_match:
+                img_rel = os.path.basename(img_match.group(2))
+                img_path = os.path.join(project_dir, "photos", img_rel)
+                if os.path.exists(img_path):
+                    try:
+                        doc.add_picture(img_path, width=Inches(4))
+                    except Exception:
+                        doc.add_paragraph(img_match.group(1) or "Foto")
+                else:
+                    doc.add_paragraph("[Imagen no encontrada: %s]" % img_rel)
+                continue
+            doc.add_paragraph(line)
+
+        response = make_response()
+        from io import BytesIO
+        bio = BytesIO()
+        doc.save(bio)
+        response.data = bio.getvalue()
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        response.headers['Content-Disposition'] = 'attachment; filename="guion_%s.docx"' % str(project_id)[:8]
+        return response
+    except Exception as e:
+        log = get_logger("jobs")
+        log.error("Export DOCX failed for project %s: %s", project_id, e)
+        return jsonify({"ok": False, "error": "Error al generar DOCX"}), 500
+
+
+@jobs_bp.route("/api/project/<project_id>/export/md", methods=["GET"])
+@login_required
+def download_md(project_id):
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "No autorizado"}), 403
+
+    ok, result = _check_access(project_id)
+    if not ok:
+        return result
+
+    content, _ = _load_script_content(project_id)
+    if content is None:
+        return jsonify({"ok": False, "error": "script no encontrado"}), 404
+
+    response = make_response(content)
+    response.headers['Content-Type'] = 'text/markdown; charset=utf-8'
+    response.headers['Content-Disposition'] = 'attachment; filename="guion_%s.md"' % str(project_id)[:8]
+    return response

@@ -106,6 +106,7 @@ def _send(ws, payload):
     ws.send(json.dumps(payload))
 
 
+# TODO: ordenar. horrendo...
 def handle_websocket(ws):
     session = None
     try:
@@ -144,14 +145,14 @@ def handle_websocket(ws):
                 break
             else:
                 raise AudioStreamError("tipo no soportado")
-    except AudioStreamError as exc:
-        log.warning("Audio WS error: %s", exc)
-        _send(ws, {"type": "error", "error": str(exc)})
-    except Exception as exc:  # pragma: no cover
-        log.error("Audio WS excepción: %s", exc)
+    except AudioStreamError as e:
+        log.warning("Audio WS error: %s", e)
+        _send(ws, {"type": "error", "error": str(e)})
+    except Exception as e:
+        log.error("Audio WS excepción: %s", e)
         _send(ws, {"type": "error", "error": "Error interno"})
     finally:
         try:
             ws.close()
-        except Exception:  # pragma: no cover
+        except Exception:
             pass

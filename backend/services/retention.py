@@ -45,9 +45,9 @@ def cleanup_expired_projects():
                 project_store.delete_project(project_id)
                 count += 1
             except Exception as e:
-                log.error(f"No se pudo borrar proyecto {project_id}: {e}")
+                log.error("No se pudo borrar proyecto %s: %s", project_id, e)
 
-        log.info(f"Limpieza completada: {count} proyectos")
+        log.info("Limpieza completada: %s proyectos", count)
         return count
     finally:
         Session.remove()
@@ -93,5 +93,5 @@ def run_cleanup_loop(interval_seconds=3600):
             cleanup_expired_projects()
             cleanup_expired_events()
         except Exception as e:
-            log.error(f"Error en limpieza automática: {e}")
+            log.error("Error en limpieza automática: %s", e)
         time.sleep(interval_seconds)

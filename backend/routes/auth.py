@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, jsonify, request, redirect, session
+from flask import Blueprint, jsonify, request, redirect, session, make_response
 from flask_login import login_user, logout_user, login_required, current_user
 
 from config import Config
@@ -47,6 +47,23 @@ def register_auth_hooks(app):
 
         return None
 
+    @app.before_request
+    def enforce_password_change():
+        if not current_user.is_authenticated:
+            return None
+
+        if hasattr(current_user, 'must_change_password') and current_user.must_change_password:
+            allowed = ['auth.api_change_password', 'auth.api_logout',
+                      'pages.health', 'static']
+            if request.endpoint not in allowed:
+                if request.path.startswith("/api/"): # medio casero
+                    return jsonify({
+                        "ok": False,
+                        "error": "Debe cambiar su contraseña antes de continuar"
+                    }), 403
+                else:
+                    return redirect("/change-password")
+
 
 def _force_logout(message):
     session.clear()
@@ -58,9 +75,9 @@ def _force_logout(message):
     return redirect("/login")
 
 
-
 @auth_bp.route("/api/login", methods=["POST"])
-@limiter.limit("10 per minute", key_func=get_client_ip)
+@limiter.exempt # temp source: trust me bro
+#@limiter.limit("10 per minute", key_func=get_client_ip)
 def api_login():
     data = request.get_json() or {}
     username = data.get("username", "").strip()
@@ -205,6 +222,7 @@ def api_change_password():
             user_agent=request.user_agent.string
         )
 
+        # debería hacer logout?
         db.commit()
         return jsonify({
             "ok": True,
@@ -226,5 +244,6 @@ def api_me():
             "username": current_user.username,
             "is_admin": current_user.is_admin,
             "must_change_password": current_user.must_change_password
+            # "password_hash": aaa te imaginai yo lo he visto
         }
     })

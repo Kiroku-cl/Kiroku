@@ -1,21 +1,24 @@
 import os
 import time
+from pathlib import Path
 
 from logger import get_logger
 from services import project_store, timeline, quotas
-from services.llm_service import (
+from services.lm import render
+from services.cleanup import cleanup_project_files
+from services.lm.llm_service import (
     build_photo_token_map,
     generate_script,
     inject_photo_tokens,
     rehydrate_photo_tokens,
     validate_photo_tokens
 )
-from services import render
 
 
 log = get_logger("finalize_project")
 
 
+# TODO: ordenar todo este puto caos
 def finalize_project_job(project_id):
     state = project_store.load_state(project_id)
     if not state:
@@ -25,23 +28,16 @@ def finalize_project_job(project_id):
     if not segments:
         raise RuntimeError("Sin segmentos para procesar")
 
-    ordered_segments = sorted(
-        segments.values(),
-        key=lambda s: s.get("start_ms", 0)
-    )
-
-    transcript = " ".join(
-        seg.get("text", "") for seg in ordered_segments if seg.get("text")
-    ).strip()
+    ordered_segments = sorted(segments.values(), key=lambda s: s.get("start_ms", 0))
+    transcript = " ".join(seg.get("text", "") for seg in ordered_segments if seg.get("text")).strip()
 
     photos = timeline.get_photos(project_id)
     sorted_photos = sorted(photos, key=lambda p: p.get("t_ms", 0))
     transcript_with_markers = _insert_photo_markers(ordered_segments, sorted_photos)
 
     project_dir = project_store.get_project_dir(project_id)
-    fallback_path = os.path.join(project_dir, "transcript_raw.txt")
-    with open(fallback_path, "w", encoding="utf-8") as fh:
-        fh.write(transcript_with_markers)
+    Path(project_dir).mkdir(parents=True, exist_ok=True)
+    script_path = os.path.join(project_dir, "script.md")
 
     participant_name = state.get("participant_name", "ACTOR")
     project_name = state.get("project_name", "Guion")
@@ -64,12 +60,16 @@ def finalize_project_job(project_id):
 
     script_with_markers = rehydrate_photo_tokens(script, token_map)
     final_script = render.replace_markers_with_images(script_with_markers, sorted_photos)
-    output_path = os.path.join(project_dir, "script.md")
-    with open(output_path, "w", encoding="utf-8") as fh:
-        fh.write(f"# {project_name}\n\n")
-        fh.write(f"**Participante:** {participant_name}\n\n")
-        fh.write("---\n\n")
-        fh.write(final_script)
+
+    script_content = "# %s\n\n" % project_name
+    script_content += "**Participante:** %s\n\n" % participant_name
+    script_content += "---\n\n"
+    script_content += final_script
+
+    with open(script_path, "w", encoding="utf-8") as fh:
+        fh.write(script_content)
+
+    cleanup_project_files(project_id, keep_scripts=True)
 
     metrics = _build_metrics(ordered_segments, photos, llm_time)
     project_store.update_state_fields(project_id, {
@@ -80,8 +80,8 @@ def finalize_project_job(project_id):
     project_store.update_project_status(
         project_id,
         status="done",
-        output_file="script.md",
-        fallback_file="transcript_raw.txt",
+        output_file=None,
+        fallback_file=None,
         stylize_errors=max(0, metrics.get("photos_total", 0) - metrics.get("photos_processed", 0))
     )
 
@@ -93,6 +93,8 @@ def finalize_project_job(project_id):
     log.info("Proyecto %s finalizado", project_id)
 
 
+# Hay una explicación muy interesante de por qué hago esto. algún día lo
+# documentaré
 def _insert_photo_markers(segments, photos):
     parts = []
     sorted_photos = sorted(photos, key=lambda p: p.get("t_ms", 0))

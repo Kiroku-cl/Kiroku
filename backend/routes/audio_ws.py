@@ -2,7 +2,7 @@ from flask_login import current_user
 
 from config import Config
 from extensions import sock
-from services.audio_ingest import handle_websocket
+from services.media.audio_ingest import handle_websocket
 
 
 @sock.route(Config.AUDIO_WS_PATH)

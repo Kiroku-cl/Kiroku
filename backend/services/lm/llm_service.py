@@ -3,7 +3,7 @@ import re
 from config import Config
 from helpers import load_prompt
 from logger import get_logger
-from services.openai_client import get_openai_client
+from services.lm.openai_client import get_openai_client
 
 log = get_logger("llm")
 
@@ -52,7 +52,7 @@ def generate_script(transcript_with_tokens, participant_name="ACTOR"):
         return transcript_with_tokens
 
     try:
-        log.info(f"Generando guion para {participant_name}...")
+        log.info("Generando guion para %s...", participant_name)
 
         user_content = (
             f"Nombre del participante: {participant_name}\n\n"
@@ -79,5 +79,5 @@ def generate_script(transcript_with_tokens, participant_name="ACTOR"):
         return result
 
     except Exception as e:
-        log.error(f"Generación LLM falló: {e}")
+        log.error("Generación LLM falló: %s", e)
         return transcript_with_tokens

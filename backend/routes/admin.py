@@ -854,7 +854,7 @@ def update_user_flags(user_id):
         )
         db.commit()
 
-        log.info(f"Admin {current_user.id} actualizó flags user={user.id}")
+        log.info("Admin %s actualizó flags user=%s", current_user.id, user.id)
 
         return jsonify({
             "ok": True,
