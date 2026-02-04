@@ -97,7 +97,12 @@ require_env
 case "$cmd" in
   up)
     ensure_edge_network
-    dc up -d --build "$@"
+    dc up -d --build \
+        --scale worker-prepare=${WORKERS_PREPARE:-1} \
+        --scale worker-transcribe=${WORKERS_TRANSCRIBE:-1} \
+        --scale worker-photos=${WORKERS_PHOTO:-1} \
+        --scale worker-llm=${WORKERS_LLM:-1} \
+        "$@"
     ;;
 
   down)
