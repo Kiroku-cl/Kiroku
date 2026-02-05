@@ -24,7 +24,10 @@ export default function ResultClient({
   initialParticipantName,
   initialCreatedAt,
   initialExpiresAt,
-  initialRecordingDuration
+  initialRecordingDuration,
+  createdLabel,
+  expiryLabel,
+  durationLabel
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [error, setError] = useState(initialError);
@@ -305,9 +308,9 @@ export default function ResultClient({
     setShowDeleteModal(false);
   };
 
-  const durationLabel = formatDuration(meta.recordingDurationSeconds);
-  const createdLabel = formatDate(meta.createdAt);
-  const expiryLabel = formatExpiry(meta.expiresAt);
+  const createdDisplay = createdLabel || "-";
+  const expiryDisplay = expiryLabel || "Sin expiración";
+  const durationDisplay = durationLabel || "-";
 
   if (status === "queued" || status === "processing") {
     return (
@@ -392,7 +395,7 @@ export default function ResultClient({
 
           <div className="hidden sm:flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-200">
-              {expiryLabel}
+              {expiryDisplay}
             </span>
           </div>
         </div>
@@ -400,11 +403,11 @@ export default function ResultClient({
         <div className="mt-4 flex flex-wrap gap-4 text-xs text-text-muted">
           <span className="inline-flex items-center gap-1">
             <CalendarIcon className="h-3.5 w-3.5" />
-            {createdLabel}
+            {createdDisplay}
           </span>
           <span className="inline-flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
-            {durationLabel}
+            {durationDisplay}
           </span>
         </div>
 
@@ -476,33 +479,5 @@ export default function ResultClient({
   );
 }
 
-function formatDuration(totalSeconds) {
-  if (totalSeconds === null || totalSeconds === undefined) return "-";
-  const seconds = Math.max(0, Number(totalSeconds));
-  if (Number.isNaN(seconds)) return "-";
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("es-ES");
-}
-
-function formatExpiry(value) {
-  if (!value) return "Sin expiración";
-  const expiresAt = new Date(value);
-  if (Number.isNaN(expiresAt.getTime())) return "Sin expiración";
-  const diffMs = expiresAt.getTime() - Date.now();
-  if (diffMs <= 0) return "Expirado";
-  const diffMinutes = Math.max(1, Math.floor(diffMs / 60000));
-  if (diffMinutes < 60) return `Expira en ${diffMinutes} min`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `Expira en ${diffHours} h`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `Expira en ${diffDays} días`;
-}
+// Fechas y duraciones vienen formateadas desde el servidor para evitar
+// desajustes entre SSR y cliente.

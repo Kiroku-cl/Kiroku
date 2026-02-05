@@ -1,21 +1,15 @@
 import os
-import re
-import html as html_lib
-
-from io import BytesIO
-
-import markdown2
-from docx import Document
-from docx.shared import Inches
-from flask import Blueprint, jsonify, send_from_directory, request, make_response
+import os
+from flask import Blueprint, jsonify, send_from_directory, make_response
 from flask_login import login_required, current_user
-from weasyprint import HTML
 
 from logger import get_logger
-from helpers import is_valid_uuid, encode_image_base64, get_mime_type
+from helpers import is_valid_uuid, get_mime_type
 from models import utcnow
 from services import project_store
-from extensions import limiter
+from services.export.html_renderer import convert_script_to_html
+from services.export.pdf_renderer import render_pdf_bytes
+from services.export.docx_renderer import render_docx_bytes
 
 jobs_bp = Blueprint('jobs', __name__)
 
@@ -36,16 +30,13 @@ def project_status(project_id):
         "ok": True,
         "status": record.status,
         "error": record.error_message,
-        "output_file": record.output_file,
         "project_name": state.get("project_name", record.title),
         "participant_name": state.get("participant_name", ""),
         "recording_duration_seconds": state.get("recording_duration_seconds"),
         "created_at": record.created_at.isoformat() if getattr(record, "created_at", None) else None,
         "expires_at": state.get("expires_at") or (
             record.expires_at.isoformat() if getattr(record, "expires_at", None) else None
-        ),
-        "progress": state.get("progress", {}),
-        "processing_jobs": state.get("processing_jobs", {})
+        )
     })
 
 
@@ -107,87 +98,11 @@ def project_preview(project_id):
         with open(script_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        html = convert_script_to_html(content, project_id)
+        html = convert_script_to_html(content, project_id, embed_images=True)
 
         return jsonify({"ok": True, "html": html})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# QUIE ASCO QUE ASCOOO NO ME FUNEN
-# Parser casero de markdown a html basico :)
-def convert_script_to_html(content, project_id):
-    project_dir = project_store.get_project_dir(project_id)
-    photos_dir = os.path.join(project_dir, "photos")
-    content = content.strip()
-    lines = content.split('\n')
-    html_parts = []
-    prev_empty = False
-
-    for line in lines:
-        if not line.strip():
-            if not prev_empty:
-                html_parts.append('<div style="height: 1em;"></div>')
-            prev_empty = True
-            continue
-        prev_empty = False
-
-        if line.startswith('# '):
-            text = html_lib.escape(line[2:])
-            html_parts.append(f'<h1 style="text-align: center; margin-bottom: 0.5em;">{text}</h1>')
-            continue
-
-        if line.startswith('## '):
-            text = html_lib.escape(line[3:])
-            html_parts.append(f'<h2 style="margin-top: 1em;">{text}</h2>')
-            continue
-
-        if line.strip() == '---':
-            html_parts.append('<hr style="margin: 1em 0;">')
-            continue
-
-        if '**' in line:
-            text = html_lib.escape(line)
-            text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-            html_parts.append(f'<p style="margin: 0.5em 0;">{text}</p>')
-            continue
-
-        img_match = re.match(r'!\[(.+?)\]\((.+?)\)', line.strip())
-        if img_match:
-            alt = html_lib.escape(img_match.group(1))
-            filename = os.path.basename(img_match.group(2))
-            img_path = os.path.join(photos_dir, filename)
-
-            real_photos_dir = os.path.realpath(photos_dir)
-            real_img_path = os.path.realpath(img_path)
-            if not real_img_path.startswith(real_photos_dir + os.sep):
-                html_parts.append(f'<div style="text-align: center; margin: 1em 0; padding: 2em; background: #333; border-radius: 8px; color: #999;">[Ruta inválida]</div>')
-                continue
-
-            if os.path.exists(img_path):
-                b64_data = encode_image_base64(img_path)
-                mime = get_mime_type(filename) or 'image/jpeg'
-
-                data_url = f'data:{mime};base64,{b64_data}'
-                html_parts.append(
-                    '<div style="display: flex; justify-content: center; margin: 1em 0;">'
-                    f'<img src="{data_url}" alt="{alt}" '
-                    'style="max-width: 55%; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.18);" />'
-                    '</div>'
-                )
-            else:
-                html_parts.append(f'<div style="text-align: center; margin: 1em 0; padding: 2em; background: #333; border-radius: 8px; color: #999;">[Imagen no encontrada: {alt}]</div>')
-            continue
-
-        text = html_lib.escape(line)
-        leading_spaces = len(line) - len(line.lstrip())
-        if leading_spaces > 0:
-            nbsp = '&nbsp;' * leading_spaces
-            text = nbsp + text.lstrip()
-
-        html_parts.append(f'<div style="margin: 0; white-space: pre-wrap;">{text}</div>')
-
-    return '\n'.join(html_parts)
 
 
 def _load_script_content(project_id):
@@ -222,14 +137,12 @@ def export_pdf(project_id):
     if not ok:
         return result
 
-    record = result
     content, project_dir = _load_script_content(project_id)
     if content is None:
         return jsonify({"ok": False, "error": "script no encontrado"}), 404
 
-    html = markdown2.markdown(content)
     try:
-        pdf_bytes = HTML(string=html, base_url=project_dir).write_pdf()
+        pdf_bytes = render_pdf_bytes(content, project_id, project_dir)
         response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Content-Disposition'] = 'attachment; filename="guion_%s.pdf"' % str(project_id)[:8]
@@ -247,43 +160,13 @@ def export_docx(project_id):
     if not ok:
         return result
 
-    record = result
     content, project_dir = _load_script_content(project_id)
     if content is None:
         return jsonify({"ok": False, "error": "script no encontrado"}), 404
 
     try:
-        doc = Document()
-        for raw_line in content.splitlines():
-            line = raw_line.strip()
-            if not line:
-                doc.add_paragraph("")
-                continue
-            if line.startswith("# "):
-                doc.add_heading(line[2:].strip(), level=1)
-                continue
-            if line.startswith("## "):
-                doc.add_heading(line[3:].strip(), level=2)
-                continue
-            img_match = re.match(r'!\[(.*?)\]\((.+?)\)', line)
-            if img_match:
-                img_rel = os.path.basename(img_match.group(2))
-                img_path = os.path.join(project_dir, "photos", img_rel)
-                if os.path.exists(img_path):
-                    try:
-                        doc.add_picture(img_path, width=Inches(4))
-                    except Exception:
-                        doc.add_paragraph(img_match.group(1) or "Foto")
-                else:
-                    doc.add_paragraph("[Imagen no encontrada: %s]" % img_rel)
-                continue
-            doc.add_paragraph(line)
-
-        response = make_response()
-        from io import BytesIO
-        bio = BytesIO()
-        doc.save(bio)
-        response.data = bio.getvalue()
+        docx_bytes = render_docx_bytes(content, project_id, project_dir)
+        response = make_response(docx_bytes)
         response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         response.headers['Content-Disposition'] = 'attachment; filename="guion_%s.docx"' % str(project_id)[:8]
         return response

@@ -64,4 +64,8 @@ class Config:
         os.getenv("IMAGE_STYLE_ENABLED", "false").lower() == "true"
     )
 
-    DEBUG_CONCAT_FILES = os.getenv("DEBUG_CONCAT_FILES", "0") == "1"
+    IMAGE_STYLIZER_BACKEND = os.getenv("IMAGE_STYLIZER_BACKEND", "")
+
+    GENAI_API_KEY     = os.getenv("GOOGLE_GENAI_API_KEY", "")
+    GENAI_IMAGE_MODEL = os.getenv("GENAI_IMAGE_MODEL", "gemini-2.5-flash-image")
+

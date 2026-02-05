@@ -4,7 +4,7 @@ from config import Config
 from logger import get_logger
 from services import project_store
 from services.queue import get_queue
-from services.jobs import prepare_project
+from rq import Retry
 
 
 log = get_logger("orchestrator")
@@ -14,7 +14,8 @@ def enqueue_processing_pipeline(project_id):
     queue = get_queue(Config.RQ_PREPARE_QUEUE)
     retry = Retry(max=3, interval=[10, 60, 180])
     job = queue.enqueue(
-        prepare_project.prepare_project_job,
+        "worker.dispatch",
+        "prepare_project",
         project_id,
         job_timeout=Config.PREPARE_PROJECT_TIMEOUT,
         retry=retry

@@ -1,10 +1,12 @@
 import argparse
 import os
+import argparse
 import threading
 import time
 
 from redis import Redis
 from rq import Worker
+from rq.utils import import_attribute
 
 from config import Config
 from logger import get_logger
@@ -15,16 +17,28 @@ from services.retention import run_cleanup_loop
 log = get_logger("worker")
 
 
+ALLOWED_JOBS = {
+    "prepare_project": "services.jobs.prepare_project.prepare_project_job",
+    "transcribe_segment": "services.jobs.transcribe_segment.transcribe_segment_job",
+    "stylize_photo": "services.jobs.stylize_photo_job.stylize_photo_job",
+    "finalize_project": "services.jobs.finalize_project.finalize_project_job",
+}
+
+
+def dispatch(alias, *args, **kwargs):
+    target = ALLOWED_JOBS.get(alias)
+    if not target:
+        log.warning("Alias de job no permitido: %s", alias)
+        return None
+    func = import_attribute(target)
+    return func(*args, **kwargs)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="RQ worker launcher")
     parser.add_argument(
         "--queues",
         help="Comma separated list of queue names to listen on",
-        default=""
-    )
-    parser.add_argument(
-        "--name",
-        help="Optional worker name override",
         default=""
     )
     return parser.parse_args()
@@ -64,7 +78,7 @@ def main():
             Config.RQ_LLM_QUEUE
         ]
     log.info("Worker listening on queues: %s", ", ".join(queues))
-    worker = Worker(queues, connection=redis_conn, name=args.name or None)
+    worker = Worker(queues, connection=redis_conn, name=None)
     worker.work()
 
 

@@ -24,8 +24,6 @@ def transcribe_wav(wav_path):
             )
 
         text = (getattr(response, "text", "") or "").strip()
-        log.info("Transcripción con OpenAI: %s", text)
-
         return text
 
     except Exception as e:

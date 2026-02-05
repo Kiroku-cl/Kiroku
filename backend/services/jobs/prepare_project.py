@@ -72,7 +72,8 @@ def prepare_project_job(project_id):
     transcribe_jobs = []
     for segment_id in segments.keys():
         job = transcribe_queue.enqueue(
-            "services.jobs.transcribe_segment.transcribe_segment_job",
+            "worker.dispatch",
+            "transcribe_segment",
             project_id,
             segment_id,
             job_timeout=Config.TRANSCRIBE_JOB_TIMEOUT,
@@ -87,7 +88,8 @@ def prepare_project_job(project_id):
             if photo.get("stylized_path"):
                 continue
             job = stylize_queue.enqueue(
-                "services.jobs.stylize_photo_job.stylize_photo_job",
+                "worker.dispatch",
+                "stylize_photo",
                 project_id,
                 photo["photo_id"],
                 job_timeout=Config.PHOTO_JOB_TIMEOUT,
@@ -99,7 +101,8 @@ def prepare_project_job(project_id):
     depends = [job for _, job in transcribe_jobs]
     depends.extend(job for _, job in stylize_jobs)
     finalize_job = finalize_queue.enqueue(
-        "services.jobs.finalize_project.finalize_project_job",
+        "worker.dispatch",
+        "finalize_project",
         project_id,
         depends_on=depends or current_job,
         job_timeout=Config.LLM_JOB_TIMEOUT,
@@ -149,19 +152,11 @@ def _build_wav_from_chunks(project_id, chunk_paths, output_path):
         output_path
     ]
     subprocess.run(cmd, check=True)
-    if Config.DEBUG_CONCAT_FILES:
-        log.info(
-            "Proyecto %s: combinado %s con %d chunks (%d bytes totales)",
-            project_id,
-            combined_path,
-            len(chunk_paths),
-            total_bytes
-        )
-    else:
-        try:
-            os.remove(combined_path)
-        except OSError:
-            pass
+
+    try:
+        os.remove(combined_path)
+    except OSError:
+        pass
 
 
 def _slice_segments(full_wav_path, segments_dir, duration_ms, photos):

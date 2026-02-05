@@ -3,7 +3,7 @@ import time
 
 from logger import get_logger
 from services import project_store, timeline, quotas
-from services.media.image_stylize import stylize_image
+from services.media.image_stylize import stylize_image_file
 
 
 log = get_logger("stylize_photo")
@@ -39,7 +39,7 @@ def stylize_photo_job(project_id, photo_id):
     stylized_path = os.path.join(project_dir, "photos", f"stylized_{photo_id}.jpg")
 
     start = time.time()
-    success = stylize_image(original_path, stylized_path)
+    success = stylize_image_file(original_path, stylized_path)
     elapsed = time.time() - start
 
     if not success:

@@ -23,6 +23,7 @@ python-dotenv>=1.0.0
 
 # AI/ML
 openai>=1.0.0
+google-genai>=0.5.0
 
 # Export
 weasyprint>=62.0
