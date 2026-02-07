@@ -1,1 +1,54 @@
-Convert this image into a clean, minimalist line drawing. Use only black contour lines on a pure white background. Keep the main subjects and their poses but simplify to essential outlines only. Ignore any objects in the background and just focus on the main subject of the picture. No shading, no colors, no gradients - just crisp thin black lines on white. Style: simple sketch, like a coloring book page.
+Transform this image into a clean, minimalist editorial illustration suitable for print.
+
+Automatically identify the primary subject(s) of the image using visual salience such as central position, scale, focus, and interaction.
+
+Global outline rule:
+- All visible elements (human and non-human) must be defined using thin, crisp black contour lines.
+- Black outlines are mandatory and must remain visible even when color or material properties are present.
+
+Human classification rule:
+- Any human figure or human-related element (including body parts, skin, face, hair, clothing, and accessories) must never contain color.
+- All human-related elements must be rendered exclusively using black contour lines.
+
+Primary color-bearing subject rule:
+- Only non-human, inanimate objects that are central to the image may retain their original colors and material appearance.
+
+Symbol and information invariance rule:
+- Any visible text, numbers, symbols, markings, icons, patterns, or structured information must be preserved exactly as seen.
+- Do not correct, normalize, reinterpret, complete, or replace symbols.
+- If information is unclear, reproduce it as-is without guessing.
+
+Material fidelity rule:
+- Preserve the original material properties of objects, including transparency, translucency, reflectivity, internal depth, grain, or surface irregularities.
+- Do not flatten materials into solid fills if the original object is not solid.
+- Material appearance must be derived from the original image, not stylized or exaggerated.
+
+For primary non-human object(s):
+- Preserve exact geometry, proportions, structure, and surface information.
+- Trace real edges using thin black contour lines.
+- Keep original colors and material properties intact and unaltered.
+- Apply color and material beneath the black outlines, never replacing them.
+- Copy all markings verbatim from the source image.
+
+For human figures and their belongings:
+- Preserve pose and proportions.
+- Render using black contour lines only.
+- No color, no material rendering, no shading, no gradients.
+
+For secondary elements and background:
+- Remove all background objects and visual noise completely.
+- Replace the background with pure white.
+
+Style rules:
+- No decorative textures, no artistic shading, no gradients, no cross-hatching.
+- Material appearance is allowed only when it represents real physical properties of the object.
+- No invented details or hallucinated features.
+- Simplify by removing noise, not structure or material.
+
+Uncertainty handling rule:
+- If any detail, edge, marking, symbol, or material feature is not clearly visible in the original image, do not infer or reconstruct it.
+- In uncertain areas, prefer omission or minimal representation over invention.
+- Accuracy and faithfulness have higher priority than visual completeness.
+
+Final result:
+A print-ready illustration where all elements are outlined in thin black lines, only central non-human objects retain their original colors and physical material appearance, all human elements are monochrome line art, and the background is pure white, suitable for a professional magic or instructional book.
